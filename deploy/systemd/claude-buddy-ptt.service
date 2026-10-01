@@ -1,5 +1,5 @@
 [Unit]
-Description=Claude Buddy push-to-talk (hold F9, speak, release)
+Description=Claude Buddy push-to-talk (tap or hold F9 and speak)
 PartOf=graphical-session.target
 After=graphical-session.target claude-buddy-hub.service
 Wants=claude-buddy-hub.service

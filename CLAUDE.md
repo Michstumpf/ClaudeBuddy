@@ -46,7 +46,7 @@ Feito (fases 0–2):
   - Na lista há um botão "◀ Buddy"; lista e detalhe voltam sozinhos para o rosto após 30 s sem toque.
 - `hub/buddy_hub/local_sessions.py`: lê `~/.claude/sessions/<pid>.json` (nome do `/rename`, busy/idle/waiting, pane tmux) e corrige o que os hooks não reportam. Detalhes no README.
 - `hub/buddy_hub/stt.py` + `POST /api/transcribe`: faster-whisper `small` em CPU, carregado na primeira chamada. `av<16` fixado (o faster-whisper 1.2.x quebra com PyAV 16+).
-- `ptt/buddy_ptt.py`: segurar F9 no Ubuntu (X11) → `pw-record` → hub → digita na janela em foco + Enter. `pynput` instalado com `--no-deps` (o `evdev` só serve para Wayland e precisa de `python3-dev`).
+- `ptt/buddy_ptt.py`: F9 no Ubuntu (X11), tocar e só falar (para no silêncio) ou segurar → `pw-record` → hub → digita na janela em foco + Enter. `pynput` instalado com `--no-deps` (o `evdev` só serve para Wayland e precisa de `python3-dev`).
 - `deploy/systemd/`: `claude-buddy-hub` (sobe no login) e `claude-buddy-ptt` (sobe com a sessão gráfica). Substituem o hub em tmux.
 - Simulador: o rótulo de "trabalhando" imita o spinner do Claude Code (`· ✢ ✳ ✶ ✻ ✽` + verbos como "Accomplishing…"); ao terminar mostra "✻ Brewed for 1m 3s · <sessão>".
 - `tests/`: 31 testes passando (`pytest -q tests`).

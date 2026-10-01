@@ -52,7 +52,12 @@ O arquivo só vence quando é mais novo que o último hook, então nunca desfaz 
 
 ## Ditado por voz no Ubuntu (segurar F9)
 
-`ptt/buddy_ptt.py` (sessão X11): segure **F9**, fale, solte. O áudio é gravado com `pw-record`, transcrito pelo hub (`POST /api/transcribe`, faster-whisper em CPU, nada sai de casa) e digitado na janela em foco, seguido de Enter. Funciona em qualquer terminal ou app, com ou sem tmux.
+`ptt/buddy_ptt.py` (sessão X11), dois jeitos:
+
+- **toque** no F9 e só fale: envia sozinho depois de 1,5 s de silêncio (`BUDDY_PTT_SILENCE`), ou num segundo toque; sem fala nenhuma em 8 s, cancela;
+- **segure** o F9 enquanto fala e solte para enviar.
+
+O áudio é gravado com `pw-record`, transcrito pelo hub (`POST /api/transcribe`, faster-whisper em CPU, nada sai de casa) e digitado na janela em foco, seguido de Enter. Funciona em qualquer terminal ou app, com ou sem tmux.
 
 ```bash
 uv pip install --python .venv/bin/python -r hub/requirements-stt.txt python-xlib six
@@ -65,7 +70,7 @@ journalctl --user -u claude-buddy-ptt -f
 - O hub sobe sozinho no login (`claude-buddy-hub.service`); o PTT sobe com a sessão gráfica (`claude-buddy-ptt.service`). Os caminhos assumem o clone em `~/personal/ClaudeBuddy`.
 - Configuração: `BUDDY_PTT_KEY` (padrão `f9`), `BUDDY_PTT_ENTER=0` para só digitar sem Enter, `BUDDY_STT_MODEL` no hub (padrão `small`; `large-v3-turbo` acerta mais jargão, mas é bem mais lento em CPU), `BUDDY_STT_LANGUAGE` (padrão `pt`; vazio = detectar).
 - O modelo carrega na primeira transcrição (~600 MB de RAM no hub) e fica em memória.
-- Toques com menos de 0,4 s são ignorados; frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org") são descartadas.
+- Apertar por menos de 0,4 s conta como toque; frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org") são descartadas.
 
 ## Comportamento das aprovações
 
