@@ -336,7 +336,7 @@ $("v-face").onclick = () => show("list");
 // Approval and dictation screens are left alone (they close themselves).
 const IDLE_BACK_MS = 30000;
 let lastTouch = Date.now();
-$("screen").addEventListener("pointerdown", () => { lastTouch = Date.now(); }, true);
+$("screen").addEventListener("pointerdown", () => { lastTouch = Date.now(); send({ type: "touch" }); }, true);
 setInterval(() => {
   if ((view === "list" || view === "session") && Date.now() - lastTouch > IDLE_BACK_MS) show("face");
 }, 1000);

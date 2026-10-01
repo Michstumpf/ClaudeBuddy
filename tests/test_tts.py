@@ -124,3 +124,24 @@ def test_reply_is_sent_to_connected_buddy(monkeypatch):
         assert c.get(speech["url"]).status_code == 401
         clip = c.get(f"{speech['url']}?token={TOKEN}")
         assert clip.status_code == 200 and clip.content.startswith(b"RIFF-fake-")
+
+
+def test_only_the_most_recently_used_buddy_speaks(monkeypatch):
+    monkeypatch.setattr(app_module, "Speaker", FakeSpeaker)
+    app = create_app(Settings(token=TOKEN, dictation_backend="dry-run"))
+    with TestClient(app) as c, c.websocket_connect(f"/ws?token={TOKEN}") as first, \
+            c.websocket_connect(f"/ws?token={TOKEN}") as second:
+        first.send_json({"type": "touch"})  # the user taps the first one
+        first.send_json({"type": "ping"})
+        assert first.receive_json()["type"] in ("state", "pong")
+        app.state.hub.note_voice_text("roda os testes")
+        c.post("/hook", json=payload("UserPromptSubmit", prompt="roda os testes"), headers=H)
+        c.post("/hook", json=payload("Stop", last_assistant_message="Feito."), headers=H)
+        # Wait for the reply on the first one; only then is "the second got none" final.
+        assert any(first.receive_json()["type"] == "speech" for _ in range(10))
+        c.post("/hook", json=payload("SessionEnd"), headers=H)
+        seen = []
+        while not seen or not (seen[-1]["type"] == "state" and
+                               any(x["status"] == "offline" for x in seen[-1]["sessions"])):
+            seen.append(second.receive_json())
+        assert "speech" not in [m["type"] for m in seen]

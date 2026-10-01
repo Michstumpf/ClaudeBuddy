@@ -17,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import time
 import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
@@ -45,6 +46,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         transcriber = RemoteFirst(settings.stt_remote, settings.token, local=transcriber)
     speaker = Speaker(settings.tts_voice)
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
+    # When several Buddies are connected (e.g. the device plus a simulator tab),
+    # only the most recently used one speaks; otherwise the same reply plays
+    # twice, a few ms apart, and sounds like two robotic voices.
+    last_active: dict = {}
 
     def play_locally(wav: bytes) -> None:
         if not shutil.which("pw-play"):
@@ -79,9 +84,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             clips.popitem(last=False)
         message = json.dumps({"type": "speech", "id": clip_id, "session": session.name,
                               "text": text, "url": f"/api/speech/{clip_id}"})
-        for ws in list(hub.devices):
+        for ws in sorted(hub.devices, key=lambda d: last_active.get(d, 0.0), reverse=True):
             try:
                 await ws.send_text(message)
+                return  # one voice only
             except Exception:
                 hub.devices.discard(ws)
 
@@ -189,11 +195,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         await ws.accept()
         hub.devices.add(ws)
+        last_active[ws] = time.time()
         await hub.notify(None)
         try:
             while True:
                 msg = json.loads(await ws.receive_text())
                 kind = msg.get("type")
+                if kind != "ping":  # a touch, a decision, a dictation: this is the Buddy in use
+                    last_active[ws] = time.time()
                 if kind == "decision":
                     ok = hub.decide(msg.get("id", ""), msg.get("behavior", ""), msg.get("via", "touch"))
                     await ws.send_text(json.dumps({"type": "decision_result", "id": msg.get("id"), "ok": ok}))
@@ -206,6 +215,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             pass
         finally:
             hub.devices.discard(ws)
+            last_active.pop(ws, None)
             await hub.notify(None)
 
     return app
