@@ -4,7 +4,7 @@
 - WS   /ws          the Buddy device (or the browser simulator)
 - POST /api/dictate send dictated text to a session (e.g. from a hotkey client)
 - POST /api/transcribe  audio in (body) -> text out, with faster-whisper
-- GET  /api/speech/{id} a spoken reply (WAV) announced to devices as {"type":"speech"}
+- GET  /api/speech/{id} a spoken reply or joke (WAV) announced to devices
 - GET  /api/state   current snapshot
 - GET  /            the Buddy simulator
 """
@@ -13,6 +13,7 @@ import asyncio
 import hmac
 import json
 import logging
+import random
 import shutil
 import socket
 import subprocess
@@ -28,7 +29,10 @@ from fastapi.responses import FileResponse, Response
 
 from .config import Settings
 from .dictation import make_sender
+from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
+from .prefs import Prefs
+from . import weather as weather_api
 from .state import Hub, voice_command
 from .stt import RemoteFirst, Transcriber
 from .summarizer import Summarizer, load_key, usage_summary
@@ -49,6 +53,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.stt_remote:  # the same desktop worker also has the GPU voice
         speaker = RemoteFirstSpeaker(settings.stt_remote, settings.token, local=speaker)
     summarizer = Summarizer(load_key())
+    prefs = Prefs(settings.prefs_file)
+    jokes = JokeTeller()
+    hub.extra["settings"] = prefs.values
+    hub.extra["weather"] = None
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
     # When several Buddies are connected (e.g. the device plus a simulator tab),
     # only the most recently used one speaks; otherwise the same reply plays
@@ -84,18 +92,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if target == "local":
             await asyncio.to_thread(play_locally, wav)
             return
+        await send_to_buddy({"type": "speech", "session": session.name, "text": text, **store_clip(wav)})
+
+    def store_clip(wav: bytes) -> dict:
         clip_id = uuid.uuid4().hex[:12]
         clips[clip_id] = wav
         while len(clips) > 10:
             clips.popitem(last=False)
-        message = json.dumps({"type": "speech", "id": clip_id, "session": session.name,
-                              "text": text, "url": f"/api/speech/{clip_id}"})
+        return {"id": clip_id, "url": f"/api/speech/{clip_id}"}
+
+    async def send_to_buddy(message: dict) -> bool:
+        """To the most recently used Buddy only: one voice, one bubble."""
+        text = json.dumps(message)
         for ws in sorted(hub.devices, key=lambda d: last_active.get(d, 0.0), reverse=True):
             try:
-                await ws.send_text(message)
-                return  # one voice only
+                await ws.send_text(text)
+                return True
             except Exception:
                 hub.devices.discard(ws)
+        return False
+
+    # ---- jokes and weather --------------------------------------------------
+
+    def calm() -> bool:
+        return not hub.night and not hub.approvals and not any(
+            s.status == "waiting" for s in hub.sessions.values())
+
+    async def tell_joke() -> None:
+        text = await jokes.tell(hub.snapshot(), hub.extra.get("weather"))
+        message = {"type": "joke", "text": text}
+        if prefs["joke_voice"] and speaker.available():
+            try:
+                wav = await asyncio.to_thread(speaker.synthesize, text)
+                message.update(store_clip(await asyncio.to_thread(louder, wav)))
+            except Exception:
+                log.exception("could not voice the joke; showing it only")
+        await send_to_buddy(message)
+
+    async def joke_loop() -> None:
+        next_at = time.time() + 10 * 60  # first one a while after start
+        while True:
+            await asyncio.sleep(30)
+            if time.time() < next_at:
+                continue
+            if prefs["jokes"] and hub.devices and calm():
+                try:
+                    await tell_joke()
+                except Exception:
+                    log.exception("joke failed")
+                next_at = time.time() + prefs["joke_interval_min"] * 60 * random.uniform(0.8, 1.2)
+
+    async def weather_loop() -> None:
+        while True:
+            if prefs["weather"]:
+                try:
+                    hub.extra["weather"] = await asyncio.to_thread(weather_api.fetch)
+                    await hub.notify(None)
+                except Exception as exc:
+                    log.warning("weather unavailable (%s)", exc.__class__.__name__)
+            await asyncio.sleep(weather_api.REFRESH_SECONDS)
 
     hub.on_voice_reply = speak_reply
 
@@ -129,9 +184,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        task = asyncio.create_task(housekeeping())
+        tasks = [asyncio.create_task(housekeeping())]
+        if settings.background_extras:
+            tasks += [asyncio.create_task(joke_loop()), asyncio.create_task(weather_loop())]
         yield
-        task.cancel()
+        for task in tasks:
+            task.cancel()
 
     app = FastAPI(title="Claude Buddy hub", lifespan=lifespan)
     app.state.hub = hub
@@ -231,6 +289,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     last_active[ws] = time.time()
                     if kind == "touch" and hub.night:
                         await set_night(False, "touch")
+                if kind == "settings":
+                    if prefs.update(msg.get("values", {})):
+                        if not prefs["weather"]:
+                            hub.extra["weather"] = None
+                        await hub.notify(None)
+                elif kind == "joke_now":
+                    asyncio.get_running_loop().create_task(tell_joke())
                 if kind == "decision":
                     ok = hub.decide(msg.get("id", ""), msg.get("behavior", ""), msg.get("via", "touch"))
                     await ws.send_text(json.dumps({"type": "decision_result", "id": msg.get("id"), "ok": ok}))

@@ -89,6 +89,13 @@ mkdir -p ~/.local/share/claude-buddy/voices && cd ~/.local/share/claude-buddy/vo
 ~/personal/ClaudeBuddy/.venv/bin/python -m piper.download_voices pt_BR-faber-medium
 ```
 
+## Piadas, clima e configurações
+
+- **Piadas:** de vez em quando (padrão: a cada ~45 min, com variação) o Buddy conta uma piada num balão e, se ativado, em voz alta. O Claude Haiku escreve piadas curtas que às vezes comentam o momento (hora, clima, quantas sessões trabalham — só contagens, nunca nomes, prompts ou respostas); sem chave ou se a API falhar, usa uma lista local. Só com o Buddy tranquilo: nunca com aprovação pendente, sessão esperando ou no modo noite, e só com um Buddy conectado.
+- **Clima:** temperatura de fora (Open-Meteo, gratuito, sem chave) no canto do rosto, atualizada a cada 15 min. Local em `BUDDY_WEATHER_LAT`/`BUDDY_WEATHER_LON`/`BUDDY_WEATHER_PLACE` (padrão Canoas).
+- **Configurações (⚙ na lista de sessões):** piadas ligadas/desligadas, falar as piadas, intervalo (15/30/45/60/120 min), temperatura e "contar uma agora". Salvas em `~/.config/claude-buddy/prefs.json`.
+- Protocolo: Buddy → hub `{"type":"settings","values":{…}}` e `{"type":"joke_now"}`; hub → Buddy `{"type":"joke","text":"…","url"?}` e o estado traz `settings` e `weather`.
+
 ## Transcrição na GPU do desktop (opcional)
 
 O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU ocupada (≥ 60% de uso ou menos de 1 GB de VRAM livre, por exemplo num jogo; com os dois modelos carregados sobram ~2,9 GB numa placa de 8 GB) ou falhar. O modelo local só carrega quando o fallback acontece.

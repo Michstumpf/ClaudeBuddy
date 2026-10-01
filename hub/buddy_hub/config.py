@@ -47,6 +47,9 @@ class Settings:
     # simulator if one is connected, else the hub's speakers; local; devices; off.
     tts_voice: str = "pt_BR-faber-medium"
     speak_on: str = "auto"
+    # Joke and weather loops (off in tests, which must not hit the network).
+    background_extras: bool = False
+    prefs_file: Path | None = None  # None = ~/.config/claude-buddy/prefs.json
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -62,6 +65,7 @@ class Settings:
             stt_remote=os.environ.get("BUDDY_STT_REMOTE") or None,
             tts_voice=os.environ.get("BUDDY_TTS_VOICE", "pt_BR-faber-medium"),
             speak_on=os.environ.get("BUDDY_SPEAK_ON", "auto"),
+            background_extras=True,
         )
 
 

@@ -122,6 +122,8 @@ class Hub:
         self.voice_questions: dict[str, str] = {}
         # Night mode ("boa noite"): sleeping face, no beeps, no speech.
         self.night = False
+        # Extra top-level snapshot fields owned by the app (settings, weather).
+        self.extra: dict = {}
         # async fn(session, full_answer), set by the app to speak voice replies
         self.on_voice_reply = None
 
@@ -134,6 +136,7 @@ class Hub:
             "pending": [a.public() for a in self.approvals.values()],
             "devices": len(self.devices),
             "night": self.night,
+            **self.extra,
         }
 
     def add_listener(self, fn) -> None:

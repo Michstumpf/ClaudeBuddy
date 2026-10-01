@@ -89,6 +89,16 @@
   @keyframes twinkle { 50% { opacity: 0; } }
   @keyframes wave { from { transform: scaleY(.4); } to { transform: scaleY(1.3); } }
 
+  .chip { position: absolute; top: 6px; left: 8px; color: #b9b4ad; font-size: 11px; }
+  .bubble { position: absolute; top: 8px; right: 8px; width: 170px; padding: 6px 8px; background: var(--scr-fg); color: #1b1d22;
+            border-radius: 8px; font-size: 10px; line-height: 1.3; opacity: 0; transform: translateY(-4px); transition: opacity .25s, transform .25s; pointer-events: none; }
+  .bubble.on { opacity: 1; transform: none; }
+  .clawd { transition: transform .3s; transform-origin: center bottom; }
+  .joking .clawd { transform: translate(-34px, 14px) scale(.86); }
+  .bubble::after { content: ""; position: absolute; bottom: -7px; left: 22px; border: 7px solid transparent; border-top-color: var(--scr-fg); border-bottom: 0; }
+  .opt { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; background: #181a1f; border-radius: 4px; }
+  .opt .btn { flex: none; min-width: 92px; padding: 5px 6px; }
+  .btn.on { background: #2f8a5b }
   .list { position: absolute; inset: 30px 0 22px 0; overflow-y: auto; padding: 0 4px 4px; }
   .list-head { position: absolute; top: 4px; left: 4px; right: 4px; height: 22px; display: flex; gap: 6px; align-items: center; }
   .list-head .btn { flex: none; padding: 4px 10px; }
@@ -148,12 +158,28 @@
             <g class="fx fx-wave"><rect x="-2.4" y="3.5" width="0.6" height="3"/><rect x="-1.3" y="3" width="0.6" height="4"/><rect x="18.7" y="3" width="0.6" height="4"/><rect x="19.8" y="3.5" width="0.6" height="3"/></g>
           </svg>
           <div class="label" id="faceLabel">conectando…</div>
+          <div class="chip" id="wx"></div>
+          <div class="bubble" id="bubble"></div>
         </div>
       </div>
 
       <div class="view" id="v-list">
-        <div class="list-head"><button class="btn" data-go="face">◀ Buddy</button><span id="listCount"></span></div>
+        <div class="list-head"><button class="btn" data-go="face">◀ Buddy</button><span id="listCount" style="flex:1"></span><button class="btn" data-go="settings">⚙</button></div>
         <div class="list" id="list"></div>
+      </div>
+
+      <div class="view" id="v-settings">
+        <div class="pad">
+          <div class="title">⚙ Configurações</div>
+          <div class="opt"><span>Piadas de vez em quando</span><button class="btn" data-pref="jokes"></button></div>
+          <div class="opt"><span>Falar as piadas</span><button class="btn" data-pref="joke_voice"></button></div>
+          <div class="opt"><span>Intervalo entre piadas</span><button class="btn" id="prefInterval"></button></div>
+          <div class="opt"><span>Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
+          <div class="btns">
+            <button class="btn" data-go="list">◀ Voltar</button>
+            <button class="btn info" id="jokeNow">😄 Contar uma agora</button>
+          </div>
+        </div>
       </div>
 
       <div class="view" id="v-session">
@@ -265,6 +291,8 @@ function onMessage(msg) {
     render();
   } else if (msg.type === "speech") {
     speak(msg);
+  } else if (msg.type === "joke") {
+    showJoke(msg);
   } else if (msg.type === "dictate_result") {
     log(`ditado → ${msg.session || "?"}: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
     $("dText").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
@@ -292,7 +320,10 @@ function mood() {
 
 function render() {
   const [m, label] = mood();
-  if (!$("face").classList.contains(m)) { $("face").className = "face " + m; drawEyes(m); }
+  if (!$("face").classList.contains(m)) {
+    const joking = $("face").classList.contains("joking");
+    $("face").className = "face " + m + (joking ? " joking" : ""); drawEyes(m);
+  }
   if (label !== null) $("faceLabel").textContent = label;
   else if (!spinTimer) startSpinner();
   $("device").classList.toggle("alert", state.pending.length > 0 || state.sessions.some(s => s.status === "waiting"));
@@ -301,6 +332,15 @@ function render() {
   $("barLeft").textContent = connected ? `▶ ${counts.working || 0}  ⏸ ${counts.waiting || 0}  ✓ ${counts.done || 0}` : "offline";
   $("barRight").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  const wx = state.weather;
+  $("wx").textContent = wx ? `${wx.icon} ${wx.temp}° ${wx.place}` : "";
+  if (view === "settings" && state.settings) {
+    document.querySelectorAll("[data-pref]").forEach(b => {
+      const on = !!state.settings[b.dataset.pref];
+      b.textContent = on ? "Ligado" : "Desligado"; b.classList.toggle("on", on);
+    });
+    $("prefInterval").textContent = `${state.settings.joke_interval_min} min`;
+  }
   if (view === "list") {
     $("listCount").textContent = `${state.sessions.length} sessões`;
     $("list").innerHTML = state.sessions.length ? "" : '<div style="padding:10px;color:#777">nenhuma sessão ainda</div>';
@@ -344,7 +384,7 @@ const IDLE_BACK_MS = 30000;
 let lastTouch = Date.now();
 $("screen").addEventListener("pointerdown", () => { lastTouch = Date.now(); send({ type: "touch" }); }, true);
 setInterval(() => {
-  if ((view === "list" || view === "session") && Date.now() - lastTouch > IDLE_BACK_MS) show("face");
+  if (["list", "session", "settings"].includes(view) && Date.now() - lastTouch > IDLE_BACK_MS) show("face");
 }, 1000);
 document.querySelectorAll("[data-go]").forEach(b => b.onclick = (e) => { e.stopPropagation(); show(b.dataset.go); });
 $("sDictate").onclick = () => {
@@ -383,11 +423,34 @@ $("dHold").addEventListener("pointerdown", startListen);
 $("dHold").addEventListener("pointerup", stopListen);
 $("dHold").addEventListener("pointerleave", stopListen);
 
+// ---------- settings screen + jokes ----------
+const INTERVALS = [15, 30, 45, 60, 120];
+document.querySelectorAll("[data-pref]").forEach(b => b.onclick = (e) => {
+  e.stopPropagation();
+  if (state.settings) send({ type: "settings", values: { [b.dataset.pref]: !state.settings[b.dataset.pref] } });
+});
+$("prefInterval").onclick = (e) => {
+  e.stopPropagation();
+  const now = state.settings ? state.settings.joke_interval_min : 45;
+  send({ type: "settings", values: { joke_interval_min: INTERVALS[(INTERVALS.indexOf(now) + 1) % INTERVALS.length] } });
+};
+$("jokeNow").onclick = (e) => { e.stopPropagation(); send({ type: "joke_now" }); show("face"); };
+
+let bubbleTimer = null;
+function showJoke(msg) {
+  log(`😄 ${msg.text}`);
+  if (view !== "approve" && view !== "dictate") show("face");
+  $("bubble").textContent = msg.text; $("bubble").classList.add("on"); $("face").classList.add("joking");
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => { $("bubble").classList.remove("on"); $("face").classList.remove("joking"); }, 15000);
+  if (msg.url) speak(msg);
+}
+
 // ---------- spoken replies (voice turns) ----------
 let talking = null;  // text being spoken
 const speechQueue = [];
 function speak(msg) {
-  log(`🔊 ${msg.session}: ${msg.text}`);
+  log(`🔊 ${msg.session || "Buddy"}: ${msg.text}`);
   speechQueue.push(msg);
   if (!talking) playNext();
 }
@@ -397,7 +460,7 @@ const SPEECH_GAIN = 1.8;
 async function playNext() {
   const msg = speechQueue.shift();
   if (!msg) { talking = null; render(); return; }
-  talking = msg.text; show("face"); render();
+  talking = msg.type === "joke" ? "😄" : msg.text; show("face"); render();
   try {
     audio = audio || new AudioContext();
     if (audio.state === "suspended") await audio.resume();
