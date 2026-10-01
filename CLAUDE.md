@@ -51,7 +51,8 @@ Feito (fases 0–2):
 - Simulador: o rótulo de "trabalhando" imita o spinner do Claude Code (`· ✢ ✳ ✶ ✻ ✽` + verbos como "Accomplishing…"); ao terminar mostra "✻ Brewed for 1m 3s · <sessão>".
 - `hub/buddy_hub/worker.py`: worker de STT na GPU (Windows/CUDA, `large-v3-turbo`), com `/health` que diz "ocupado" quando a GPU está em uso; `RemoteFirst` no hub tenta o worker e cai para a CPU.
 - `hub/buddy_hub/tts.py`: resposta falada (Piper, voz `pt_BR-faber-medium` em `~/.local/share/claude-buddy/voices`). Toca no Buddy/simulador se houver um conectado, senão nas caixas do Ubuntu. O hub nunca loga o texto de prompts nem respostas (as sessões da Portrait também reportam).
-- `tests/`: 75 testes passando (`pytest -q tests`).
+- `jokes.py`, `weather.py`, `prefs.py`: piadas (Haiku + lista local), clima (Open-Meteo) e preferências da tela ⚙.
+- `tests/`: 86 testes passando (`pytest -q tests`; `pytest.ini` com timeout de 30 s por teste).
 
 **Validado no Ubuntu em 2026-10-01** com uma sessão real em tmux: status, ditado via `tmux send-keys`, aprovar e negar (pelo Buddy falso via WebSocket e pelo simulador no Chrome), timeout caindo para o diálogo normal.
 
@@ -71,6 +72,18 @@ Aprendizados da validação:
 4. Firmware ESP32-C5: ESP-IDF 5.5+ ou Arduino core 3.3+, LVGL + LovyanGFX, mesmo protocolo do simulador; testar no Wokwi (extensão do VS Code para alcançar o hub local).
 5. Carcaça na Bambu A1 (estilo TV retrô com antena + LED; OpenSCAD paramétrico; mic na frente, speaker em câmara separada; PLA/PETG; sem logo da Anthropic se publicar).
 6. Agente falante: resposta falada a perguntas por voz, com resumo do **Claude Haiku** (`summarizer.py`, chave da Portrait em `~/.config/claude-buddy/anthropic_key`) e voz **XTTS-v2 na GPU** (`/speak` no worker; fallback Piper). Modo noite por voz ("boa noite"/"bom dia"). **Falta:** a chave do Haiku no Ubuntu e rodar de novo o `install-worker.ps1` no desktop para instalar a voz (o XTTS nunca rodou de verdade ainda); alto-falante do Buddy quando o hardware chegar.
+
+## Ideias aprovadas (backlog)
+
+Feito: piadas no balão (faladas, com opção de desligar), temperatura de fora, tela de configurações (2026-10-01).
+
+Próximas, que o Michael aprovou:
+- **Temperatura ambiente:** sensor AHT20 ou BME280 (I2C, R$ 15-30) na placa; o sensor interno do ESP32 mede o chip, não o ar.
+- **Resumo do dia** ao dar boa noite: sessões, commits, a tarefa mais longa.
+- **Próxima reunião** do Google Calendar ("Daily em 10 min").
+- **Custo do mês** do Claude na tela (inspirado no desk-display).
+- **Aviso de tarefa longa:** sessão trabalhando há mais de ~15 min.
+- **Pomodoro** com aviso de pausa.
 
 ## Rodando
 
