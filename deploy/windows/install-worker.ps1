@@ -73,12 +73,22 @@ Invoke-Native "upgrading pip" { & $Python -m pip install --upgrade pip --quiet }
 Invoke-Native "pip install" { & $Python -m pip install -r (Join-Path $Repo "hub\requirements-gpu.txt") --quiet }
 
 Step "Token"
-if (-not (Test-Path $TokenFile)) {
-    New-Item -ItemType Directory -Force (Split-Path $TokenFile) | Out-Null
-    $token = Read-Host "Paste the hub token (on Ubuntu: cat ~/.config/claude-buddy/token)"
-    Set-Content -Path $TokenFile -Value $token.Trim() -NoNewline -Encoding ascii
+function Read-TokenFile {
+    if (-not (Test-Path $TokenFile)) { return "" }
+    $raw = Get-Content $TokenFile -Raw
+    if ($null -eq $raw) { return "" }  # empty file
+    return $raw.Trim()
 }
-Write-Host "token: $TokenFile"
+if (-not (Read-TokenFile)) {
+    New-Item -ItemType Directory -Force (Split-Path $TokenFile) | Out-Null
+    do {
+        # Read-Host does not take Ctrl+V in every console; right-click pastes.
+        $token = (Read-Host "Paste the hub token (on Ubuntu: cat ~/.config/claude-buddy/token; right-click to paste)").Trim()
+        if (-not $token) { Write-Host "empty, try again" -ForegroundColor Yellow }
+    } until ($token)
+    Set-Content -Path $TokenFile -Value $token -NoNewline -Encoding ascii
+}
+Write-Host ("token: {0} ({1} chars)" -f $TokenFile, (Read-TokenFile).Length)
 
 Step "GPU check (loads $Model once; the first run downloads it)"
 $HubDir = Join-Path $Repo "hub"
@@ -118,7 +128,7 @@ Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 Start-ScheduledTask -TaskName $TaskName
 
 Step "Waiting for the worker"
-$token = (Get-Content $TokenFile -Raw).Trim()
+$token = Read-TokenFile
 for ($i = 0; $i -lt 60; $i++) {
     try {
         $h = Invoke-RestMethod "http://127.0.0.1:$Port/health" -Headers @{ "X-Buddy-Token" = $token } -TimeoutSec 2
