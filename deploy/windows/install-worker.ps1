@@ -31,10 +31,30 @@ $TaskName = "Claude Buddy STT worker"
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 
+function Find-Python312 {
+    # A shell opened before `winget install` has a stale PATH, and winget's
+    # per-user install may skip the `py` launcher, so also look where it installs.
+    $candidates = @(
+        "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
+        "$env:ProgramFiles\Python312\python.exe"
+    )
+    foreach ($cmd in @("py", "python")) {
+        if (Get-Command $cmd -ErrorAction SilentlyContinue) {
+            $args312 = if ($cmd -eq "py") { @("-3.12") } else { @() }
+            $exe = & $cmd @args312 -c "import sys; print(sys.executable if sys.version_info[:2] == (3, 12) else '')" 2>$null
+            if ($LASTEXITCODE -eq 0 -and $exe) { $candidates = @($exe.Trim()) + $candidates }
+        }
+    }
+    foreach ($exe in $candidates) { if ($exe -and (Test-Path $exe)) { return $exe } }
+    throw "Python 3.12 not found. Install it with: winget install Python.Python.3.12 (then open a new PowerShell)"
+}
+
 Step "Python venv"
 if (-not (Test-Path $Python)) {
-    py -3.12 -m venv $Venv
-    if ($LASTEXITCODE) { throw "Python 3.12 not found. Install it with: winget install Python.Python.3.12" }
+    $base = Find-Python312
+    Write-Host "using $base"
+    & $base -m venv $Venv
+    if ($LASTEXITCODE) { throw "could not create the venv with $base" }
 }
 & $Python -m pip install --upgrade pip --quiet
 & $Python -m pip install -r (Join-Path $Repo "hub\requirements-gpu.txt") --quiet
