@@ -266,3 +266,20 @@ def test_stale_hook_only_session_goes_idle():
     assert hub.expire_stale(600, now=time.time() + 700)
     assert hub.sessions["fake"].status == "idle"
     assert hub.sessions["local"].status == "working"  # the registry owns local sessions
+
+
+def test_pending_approval_has_relative_expiry():
+    hub = Hub(approval_timeout=20.0)
+    hub.devices.add(object())
+
+    async def run():
+        task = asyncio.create_task(hub.handle_hook(payload("PermissionRequest", tool_name="Bash",
+                                                           tool_input={"command": "ls"})))
+        await asyncio.sleep(0.05)
+        pending = hub.snapshot()["pending"][0]
+        hub.decide(pending["id"], "allow")
+        await task
+        return pending
+
+    pending = asyncio.run(run())
+    assert 19 < pending["expires_in"] <= 20

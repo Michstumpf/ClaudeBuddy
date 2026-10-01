@@ -20,6 +20,7 @@ struct Approval {
   std::string id, session_name, tool_name, summary;
   bool dangerous = false;
   double expires_at = 0;  // unix seconds (hub clock)
+  float expires_in = 0;   // seconds left when the hub sent it (no clock sync needed)
 };
 
 struct Weather {

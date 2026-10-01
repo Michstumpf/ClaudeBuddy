@@ -1,13 +1,25 @@
 // Claude Buddy firmware entry point: wires the link (serial for now; the
 // WebSocket to the hub comes next), the protocol and the UI.
 #include <Arduino.h>
+#include <ArduinoJson.h>
 
 #include "app/protocol.h"
 #include "hal/lvgl_port.h"
 #include "net/serial_link.h"
 #include "ui/ui.h"
 
+// Test-only commands from Wokwi scenarios (never sent by the hub).
+static bool test_command(const std::string& json) {
+  if (json.find("\"_tap\"") == std::string::npos) return false;
+  JsonDocument doc;
+  if (deserializeJson(doc, json) || doc["type"] != "_tap") return false;
+  hal::inject_tap(doc["x"] | 0, doc["y"] | 0);
+  Serial.printf("rx: tap %d,%d\n", (int)(doc["x"] | 0), (int)(doc["y"] | 0));
+  return true;
+}
+
 static void on_message(const std::string& json) {
+  if (test_command(json)) return;
   app::Incoming in = app::parse(json);
   switch (in.type) {
     case app::MessageType::State:

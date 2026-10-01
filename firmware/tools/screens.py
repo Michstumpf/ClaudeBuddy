@@ -35,31 +35,66 @@ def session(name, status, **extra):
             "tmux_pane": "%1", **extra}
 
 
-# (screenshot name, messages to send before it, extra wait in ms for animations)
+def send(msg):
+    return ("send", msg)
+
+
+def tap(x, y):
+    return ("tap", x, y)
+
+
+def expect(text):
+    """Wait until the firmware prints this on serial (e.g. what it sends to the hub)."""
+    return ("expect", text)
+
+
+IDLE = state(session("DataHub Sharing Chat", "idle", last_message="Feito: os 38 testes passaram e o pull request está pronto para revisão."),
+             session("HIPAA Compliance", "working"), session("git-d6", "offline"))
+APPROVAL = {"id": "p1", "session_name": "DataHub Sharing Chat", "tool_name": "Bash",
+            "summary": "git push --force origin main", "dangerous": True, "expires_in": 20}
+
+# (screenshot name, actions before it, extra wait in ms for animations)
 CASES = [
     ("01-sem-conexao", [], 1500),
-    ("02-tranquilo", [state(session("DataHub Sharing Chat", "idle"), session("git-d6", "idle"))], 500),
-    ("03-trabalhando", [state(session("DataHub Sharing Chat", "working"), session("git-d6", "idle"))], 900),
-    ("04-esperando", [state(session("DataHub Sharing Chat", "waiting"),
-                            pending=[{"id": "p1", "session_name": "DataHub Sharing Chat", "tool_name": "Bash",
-                                      "summary": "git push --force origin main", "dangerous": True,
-                                      "expires_at": 0}],
-                            event={"kind": "approval", "session": "DataHub Sharing Chat"})], 500),
-    ("05-terminou", [state(session("HIPAA Compliance", "done"),
-                           event={"kind": "done", "session": "HIPAA Compliance"})], 500),
-    ("06-piada", [state(session("HIPAA Compliance", "idle")),
-                  {"type": "joke", "text": "Qual é a diferença entre uma reunião e um café? O café eventualmente termina!"}], 600),
-    ("07-noite", [state(session("HIPAA Compliance", "idle"), night=True)], 500),
+    ("02-tranquilo", [send(state(session("DataHub Sharing Chat", "idle"), session("git-d6", "idle")))], 500),
+    ("03-trabalhando", [send(state(session("DataHub Sharing Chat", "working"), session("git-d6", "idle")))], 900),
+    ("04-aprovacao", [send(state(session("DataHub Sharing Chat", "waiting"), pending=[APPROVAL],
+                                 event={"kind": "approval", "session": "DataHub Sharing Chat"}))], 1500),
+    ("05-aprovou", [tap(238, 194), expect('tx: {"type":"decision","id":"p1","behavior":"allow","via":"touch"}'),
+                    send(state(session("DataHub Sharing Chat", "working")))], 500),
+    ("06-terminou", [send(state(session("HIPAA Compliance", "done"),
+                                event={"kind": "done", "session": "HIPAA Compliance"}))], 500),
+    ("07-piada", [send(state(session("HIPAA Compliance", "idle"))),
+                  send({"type": "joke", "text": "Qual é a diferença entre uma reunião e um café? O café eventualmente termina!"})], 600),
+    ("08-noite", [send(state(session("HIPAA Compliance", "idle"), night=True))], 500),
+    ("09-lista", [send(IDLE), tap(160, 100), expect('tx: {"type":"touch"}')], 1500),
+    ("10-sessao", [tap(150, 49)], 1500),
+    ("11-configuracoes", [tap(48, 193), tap(296, 18)], 1500),
+    ("12-config-tocou", [tap(258, 79),
+                         expect('tx: {"type":"settings","values":{"jokes":true,"joke_voice":false')], 300),
 ]
 
 
 def build_scenario() -> None:
     steps = ['  - wait-serial: "buddy: ready"']
-    for name, messages, wait in CASES:
-        for m in messages:
-            # json.dumps escapes non-ASCII (\u00e9...) exactly like the hub does
-            steps.append("  - write-serial: |\n      " + json.dumps(m))
-            steps.append(f'  - wait-serial: "rx: {"joke" if m["type"] == "joke" else "state"}"')
+    for name, actions, wait in CASES:
+        for i, action in enumerate(actions):
+            following = actions[i + 1][0] if i + 1 < len(actions) else None
+            if action[0] == "send":
+                m = action[1]
+                # json.dumps escapes non-ASCII (é...) exactly like the hub does
+                steps.append("  - write-serial: |\n      " + json.dumps(m, separators=(",", ":")))
+                steps.append(f'  - wait-serial: "rx: {"joke" if m["type"] == "joke" else "state"}"')
+            elif action[0] == "tap":
+                steps.append("  - write-serial: |\n      " + json.dumps({"type": "_tap", "x": action[1], "y": action[2]}, separators=(",", ":")))
+                steps.append(f'  - wait-serial: "rx: tap {action[1]},{action[2]}"')
+                # What a tap sends comes out right away: wait for it with no
+                # delay in between, or the line is printed before anyone listens.
+                # Two taps in a row need a pause, or the second overrides the first.
+                if following != "expect":
+                    steps.append("  - delay: 250ms")
+            else:
+                steps.append("  - wait-serial: " + json.dumps(action[1]))
         steps.append(f"  - delay: {wait}ms")
         steps.append(f"  - take-screenshot:\n      part-id: lcd\n      save-to: ../screenshots/{name}.png")
     SCENARIO.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +107,7 @@ def main() -> int:
         sys.exit("Set WOKWI_CLI_TOKEN (a Wokwi CI token).")
     build_scenario()
     SHOTS.mkdir(parents=True, exist_ok=True)
-    run = subprocess.run([WOKWI, str(ROOT), "--timeout", "60000", "--scenario", str(SCENARIO)],
+    run = subprocess.run([WOKWI, str(ROOT), "--timeout", "120000", "--scenario", str(SCENARIO)],
                          capture_output=True, text=True)
     print("\n".join(l for l in run.stdout.splitlines() if l.startswith("[screens]") or "rx:" in l)[-2000:])
     if run.returncode != 0:

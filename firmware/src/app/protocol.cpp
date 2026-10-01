@@ -43,6 +43,7 @@ Incoming parse(const std::string& json) {
       x.summary = str(a["summary"]);
       x.dangerous = a["dangerous"] | false;
       x.expires_at = a["expires_at"] | 0.0;
+      x.expires_in = a["expires_in"] | 20.0f;  // older hubs: assume the default timeout
       st.pending.push_back(x);
     }
     st.devices = doc["devices"] | 0;

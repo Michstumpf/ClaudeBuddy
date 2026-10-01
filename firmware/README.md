@@ -19,6 +19,8 @@ WOKWI_CLI_TOKEN=$(cat ~/.config/claude-buddy/wokwi_token) python3 tools/screens.
 # -> wokwi/screenshots/*.png e contact-sheet.png, uma captura por estado
 ```
 
+`screens.py` roda **uma** simulação com 12 estados — rosto (sem conexão, tranquilo, trabalhando, terminou, piada, noite), aprovação, lista, sessão e configurações — e **confere o que o firmware manda ao hub**: a decisão ao tocar em Aprovar, o `touch` ao tocar no rosto e o `settings` ao mudar uma opção. Toques são simulados pelo comando de teste `{"type":"_tap","x":…,"y":…}` na serial, que passa pela LVGL como um toque real. O Wokwi simula a velocidade real do SPI, então um redesenho de tela inteira leva um tempo: as capturas esperam ~1,5 s depois de trocar de tela.
+
 `screens.py` roda **uma** simulação (poupa os minutos do plano gratuito do Wokwi): manda pela serial as mesmas mensagens JSON que o hub manda (com acentos escapados, como o Python faz) e tira uma captura da tela depois de cada uma.
 
 ## Ver ao vivo, ligado ao hub de verdade

@@ -105,7 +105,10 @@ class Approval:
 
     def public(self) -> dict:
         # Not asdict(): it would try to deep-copy the asyncio.Future.
-        return {f: getattr(self, f) for f in self.__dataclass_fields__ if f != "future"}
+        out = {f: getattr(self, f) for f in self.__dataclass_fields__ if f != "future"}
+        # Relative too: the ESP32 has no clock synced with the hub.
+        out["expires_in"] = round(max(0.0, self.expires_at - time.time()), 1)
+        return out
 
 
 class Hub:

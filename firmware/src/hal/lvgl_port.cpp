@@ -34,7 +34,21 @@ static void flush(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map) {
   lv_display_flush_ready(disp);
 }
 
+static int tap_x = 0, tap_y = 0, tap_reads = 0;
+
+void inject_tap(int x, int y) {
+  tap_x = x;
+  tap_y = y;
+  tap_reads = 3;  // pressed for 2 reads, then released: a click
+}
+
 static void read_touch(lv_indev_t*, lv_indev_data_t* data) {
+  if (tap_reads > 0) {
+    data->point.x = tap_x;
+    data->point.y = tap_y;
+    data->state = --tap_reads > 0 ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    return;
+  }
   lgfx::touch_point_t tp;
   if (lcd.getTouch(&tp)) {
     data->state = LV_INDEV_STATE_PRESSED;
