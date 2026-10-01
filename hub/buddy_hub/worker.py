@@ -36,14 +36,22 @@ log = logging.getLogger("buddy.worker")
 
 
 def add_cuda_dll_dirs() -> None:
-    """On Windows, pip's nvidia-cublas-cu12 / nvidia-cudnn-cu12 put their DLLs in
-    site-packages/nvidia/*/bin, which ctranslate2 does not search by itself."""
+    """Let ctranslate2 (Whisper) find the CUDA/cuDNN DLLs on Windows.
+
+    With the GPU voice installed, PyTorch ships its own CUDA and cuDNN in
+    torch/lib, and both libraries must use that single copy: loading pip's
+    nvidia-cudnn-cu12 for Whisper and torch's cuDNN for XTTS in one process
+    crashes ("Could not load symbol cudnnGetLibConfig"). Without PyTorch, use
+    pip's nvidia-cublas-cu12 / nvidia-cudnn-cu12 (site-packages/nvidia/*/bin).
+    """
     if os.name != "nt":
         return
-    for base in map(Path, sys.path):
-        for bin_dir in (base / "nvidia").glob("*/bin"):
-            os.add_dll_directory(str(bin_dir))
-            os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    torch_libs = [base / "torch" / "lib" for base in map(Path, sys.path) if (base / "torch" / "lib" / "cudnn64_9.dll").exists()]
+    dirs = torch_libs[:1] or [d for base in map(Path, sys.path) for d in (base / "nvidia").glob("*/bin")]
+    for bin_dir in dirs:
+        os.add_dll_directory(str(bin_dir))
+        os.environ["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    log.info("CUDA DLLs from %s", ", ".join(map(str, dirs)) or "the system PATH")
 
 
 def gpu_status() -> dict | None:

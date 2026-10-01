@@ -77,14 +77,18 @@ if (-not (Test-Path $Python)) {
 Invoke-Native "upgrading pip" { & $Python -m pip install --upgrade pip --quiet }
 Invoke-Native "pip install" { & $Python -m pip install -r (Join-Path $Repo "hub\requirements-gpu.txt") --quiet }
 if (-not $NoVoice) {
-    Step "GPU voice: PyTorch (CUDA 12.4) + coqui-tts (several minutes, ~3 GB)"
+    Step "GPU voice: PyTorch (CUDA 12.6) + coqui-tts (several minutes, ~3 GB)"
     # One command, with the CUDA index as an extra source, so pip can never
     # swap in the CPU-only torch from PyPI while resolving coqui-tts.
     # coqui-tts 0.27 asks for transformers>=4.57 with no upper bound, but XTTS
     # imports transformers.pytorch_utils.isin_mps_friendly, gone in transformers 5.
-    Invoke-Native "pip install (voice)" { & $Python -m pip install "torch==2.5.1" "torchaudio==2.5.1" `
+    # Whisper (ctranslate2) then uses torch's bundled cuDNN instead of pip's
+    # (see add_cuda_dll_dirs): two cuDNN copies in one process crash. torch 2.7
+    # bundles a cuDNN 9 newer than the one ctranslate2 was built with, which is
+    # fine (cuDNN is backward compatible within a major version, not forward).
+    Invoke-Native "pip install (voice)" { & $Python -m pip install "torch==2.7.1" "torchaudio==2.7.1" `
         "coqui-tts>=0.27,<0.28" "transformers>=4.57,<5" `
-        --extra-index-url https://download.pytorch.org/whl/cu124 --quiet }
+        --extra-index-url https://download.pytorch.org/whl/cu126 --quiet }
 }
 
 Step "Token"
