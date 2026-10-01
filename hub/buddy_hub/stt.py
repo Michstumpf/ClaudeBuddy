@@ -20,7 +20,8 @@ log = logging.getLogger("buddy.stt")
 # Biases Whisper toward the words actually spoken at this desk: Portuguese
 # mixed with English dev jargon.
 INITIAL_PROMPT = (
-    "Conversa com o Claude Code sobre programação. Termos comuns: commit, push, pull request, "
+    "Conversa com o Claude Code sobre programação: escopo, requisito, funcionalidade, fluxo. "
+    "Termos comuns: commit, push, pull request, "
     "branch, merge, deploy, hook, endpoint, backend, frontend, Python, TypeScript, React, "
     "FastAPI, pytest, Docker, tmux, Jira, Slack, Portrait, EHR, HIPAA, DataHub."
 )

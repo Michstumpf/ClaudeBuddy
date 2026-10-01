@@ -56,6 +56,7 @@ NOISE_FACTOR = 4
 # X11 auto-repeat turns a held key into release+press pairs; a release only
 # counts if no press follows within this window.
 REPEAT_GRACE = 0.08
+TYPE_SETTLE = 0.03  # seconds to let a keymap change land (see type_text)
 # Phrases Whisper invents on silence or noise (YouTube subtitle credits).
 HALLUCINATIONS = re.compile(r"legendas? pela comunidade|amara\.org|obrigad[oa] por assistir|inscreva-se", re.I)
 
@@ -271,10 +272,26 @@ class PushToTalk:
             log.info("typing %d chars", len(text))
             self.notify.show("✓ Enviado" if PRESS_ENTER else "✓ Digitado", text, 3000)
             time.sleep(0.05)
-            self.typer.type(text)
+            self.type_text(text)
             if PRESS_ENTER:
                 time.sleep(0.05)
                 self.typer.tap(keyboard.Key.enter)
+
+    def type_text(self, text: str) -> None:
+        """Type like pynput's type(), but in order.
+
+        Characters with no key on the layout (ç, ã, é with a US keymap...) are
+        typed by remapping a spare keycode, and the X server applies that
+        remap a moment later; typed back to back, "relação" came out as
+        "relçãao". Pausing around those characters keeps the order.
+        """
+        for ch in text:
+            special = not ch.isascii()
+            if special:
+                time.sleep(TYPE_SETTLE)
+            self.typer.type(ch)
+            if special:
+                time.sleep(TYPE_SETTLE)
 
     def transcribe(self, audio: bytes) -> str:
         req = urllib.request.Request(
