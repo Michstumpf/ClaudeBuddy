@@ -80,7 +80,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/")
     async def simulator():
-        return FileResponse(SIMULATOR)
+        # Always revalidate: the page reconnects on its own, so a cached copy
+        # would silently keep running an old simulator.
+        return FileResponse(SIMULATOR, headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/state")
     async def state(x_buddy_token: str | None = Header(None)):
