@@ -91,7 +91,7 @@ mkdir -p ~/.local/share/claude-buddy/voices && cd ~/.local/share/claude-buddy/vo
 
 ## Transcrição na GPU do desktop (opcional)
 
-O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU ocupada (≥ 60% de uso ou menos de 2,5 GB de VRAM livre, por exemplo num jogo) ou falhar. O modelo local só carrega quando o fallback acontece.
+O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU ocupada (≥ 60% de uso ou menos de 1 GB de VRAM livre, por exemplo num jogo; com os dois modelos carregados sobram ~2,9 GB numa placa de 8 GB) ou falhar. O modelo local só carrega quando o fallback acontece.
 
 ```
 F9 / Buddy ──áudio──▶ hub (Ubuntu) ──Tailscale──▶ worker (desktop, GPU) ──texto──▶ hub ──▶ digitado no Ubuntu
