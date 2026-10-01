@@ -213,3 +213,19 @@ def test_louder_leaves_non_wav_audio_alone():
     from buddy_hub.tts import louder
 
     assert louder(b"not a wav") == b"not a wav"
+
+
+def test_to_stereo_duplicates_mono():
+    import io
+    import wave
+
+    from buddy_hub.tts import to_stereo
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(24000)
+        w.writeframes(b"\x01\x00\x02\x00")
+    with wave.open(io.BytesIO(to_stereo(buf.getvalue()))) as w:
+        assert w.getnchannels() == 2 and w.getframerate() == 24000
+        assert w.readframes(2) == b"\x01\x00\x01\x00\x02\x00\x02\x00"
+    assert to_stereo(b"junk") == b"junk"

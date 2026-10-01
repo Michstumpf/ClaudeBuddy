@@ -32,7 +32,7 @@ from .local_sessions import read_local_sessions
 from .state import Hub, voice_command
 from .stt import RemoteFirst, Transcriber
 from .summarizer import Summarizer, load_key, usage_summary
-from .tts import RemoteFirstSpeaker, Speaker, louder, speakable
+from .tts import RemoteFirstSpeaker, Speaker, louder, speakable, to_stereo
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
@@ -60,7 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.warning("pw-play not found; cannot speak on the hub")
             return
         with tempfile.NamedTemporaryFile(suffix=".wav") as f:
-            f.write(wav)
+            f.write(to_stereo(wav))  # mono plays much quieter on this desktop
             f.flush()
             subprocess.run(["pw-play", f.name], timeout=120, check=False)
 

@@ -178,3 +178,28 @@ def louder(wav: bytes, target_dbfs: float = LOUDNESS_TARGET_DBFS) -> bytes:
         dst.setparams(params)
         dst.writeframes((np.clip(y, -1.0, 1.0) * 32767).astype("<i2").tobytes())
     return out.getvalue()
+
+
+def to_stereo(wav: bytes) -> bytes:
+    """Duplicate a mono 16-bit WAV into two channels.
+
+    On the Ubuntu desktop (HyperX headset via PipeWire) a mono stream played
+    noticeably quieter than the same audio in stereo; local playback uses this.
+    """
+    import numpy as np
+
+    try:
+        with wave.open(io.BytesIO(wav), "rb") as src:
+            params = src.getparams()
+            frames = src.readframes(src.getnframes())
+    except (wave.Error, EOFError):
+        return wav
+    if params.nchannels != 1 or params.sampwidth != 2:
+        return wav
+    out = io.BytesIO()
+    with wave.open(out, "wb") as dst:
+        dst.setnchannels(2)
+        dst.setsampwidth(2)
+        dst.setframerate(params.framerate)
+        dst.writeframes(np.repeat(np.frombuffer(frames, dtype="<i2"), 2).tobytes())
+    return out.getvalue()
