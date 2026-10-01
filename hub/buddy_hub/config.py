@@ -37,6 +37,9 @@ class Settings:
     sessions_poll: float = 3.0
     # A hook-only session stuck in 'working' this long without events goes idle.
     stale_working: float = 600.0
+    # Speech-to-text (faster-whisper on CPU). Language None = auto-detect.
+    stt_model: str = "small"
+    stt_language: str | None = "pt"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -46,6 +49,8 @@ class Settings:
             dictation_backend=os.environ.get("BUDDY_DICTATION", "auto"),
             sessions_dir=_sessions_dir(),
             stale_working=float(os.environ.get("BUDDY_STALE_WORKING", "600")),
+            stt_model=os.environ.get("BUDDY_STT_MODEL", "small"),
+            stt_language=os.environ.get("BUDDY_STT_LANGUAGE", "pt") or None,
         )
 
 

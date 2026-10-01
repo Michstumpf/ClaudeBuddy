@@ -3,6 +3,7 @@
 - POST /hook        Claude Code hook events (from hooks/buddy_hook.py)
 - WS   /ws          the Buddy device (or the browser simulator)
 - POST /api/dictate send dictated text to a session (e.g. from a hotkey client)
+- POST /api/transcribe  audio in (body) -> text out, with faster-whisper
 - GET  /api/state   current snapshot
 - GET  /            the Buddy simulator
 """
@@ -22,6 +23,7 @@ from .config import Settings
 from .dictation import make_sender
 from .local_sessions import read_local_sessions
 from .state import Hub
+from .stt import Transcriber
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
@@ -31,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     hub = Hub(approval_timeout=settings.approval_timeout)
     sender = make_sender(settings.dictation_backend)
+    transcriber = Transcriber(settings.stt_model, settings.stt_language)
 
     async def housekeeping() -> None:
         host = socket.gethostname()
@@ -100,6 +103,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         check(x_buddy_token)
         body = await request.json()
         return dictate(body.get("session_id"), body.get("text", ""))
+
+    @app.post("/api/transcribe")
+    async def api_transcribe(request: Request, x_buddy_token: str | None = Header(None)):
+        check(x_buddy_token)
+        if not Transcriber.available():
+            raise HTTPException(status_code=503, detail="faster-whisper is not installed on the hub")
+        audio = await request.body()
+        if not audio:
+            raise HTTPException(status_code=400, detail="empty audio")
+        result = await asyncio.to_thread(transcriber.transcribe, audio)
+        log.info("transcribed %.1fs of audio in %.1fs", result["audio_seconds"], result["took_seconds"])
+        return result
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket, token: str | None = Query(None)):

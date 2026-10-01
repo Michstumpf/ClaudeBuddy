@@ -1,0 +1,15 @@
+[Unit]
+Description=Claude Buddy push-to-talk (hold F9, speak, release)
+PartOf=graphical-session.target
+After=graphical-session.target claude-buddy-hub.service
+Wants=claude-buddy-hub.service
+
+[Service]
+ExecStart=%h/personal/ClaudeBuddy/.venv/bin/python %h/personal/ClaudeBuddy/ptt/buddy_ptt.py
+Restart=on-failure
+RestartSec=3
+# Environment=BUDDY_PTT_KEY=f9
+# Environment=BUDDY_PTT_ENTER=0
+
+[Install]
+WantedBy=graphical-session.target

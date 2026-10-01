@@ -1,0 +1,4 @@
+# Optional: speech-to-text on the hub (POST /api/transcribe)
+faster-whisper>=1.1
+# faster-whisper 1.2.x passes av.open(metadata_errors=...), removed in PyAV 16+
+av<16

@@ -1,0 +1,12 @@
+[Unit]
+Description=Claude Buddy hub
+After=network.target
+
+[Service]
+WorkingDirectory=%h/personal/ClaudeBuddy/hub
+ExecStart=%h/personal/ClaudeBuddy/.venv/bin/python -m buddy_hub
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

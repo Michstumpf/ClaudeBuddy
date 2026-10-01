@@ -50,6 +50,23 @@ Sessões que só chegam por hook (outras máquinas, eventos falsos do simulador)
 
 O arquivo só vence quando é mais novo que o último hook, então nunca desfaz um evento que acabou de chegar. Só vale para sessões na mesma máquina do hub.
 
+## Ditado por voz no Ubuntu (segurar F9)
+
+`ptt/buddy_ptt.py` (sessão X11): segure **F9**, fale, solte. O áudio é gravado com `pw-record`, transcrito pelo hub (`POST /api/transcribe`, faster-whisper em CPU, nada sai de casa) e digitado na janela em foco, seguido de Enter. Funciona em qualquer terminal ou app, com ou sem tmux.
+
+```bash
+uv pip install --python .venv/bin/python -r hub/requirements-stt.txt python-xlib six
+uv pip install --python .venv/bin/python --no-deps pynput   # o evdev só serve para Wayland e exige python3-dev
+cp deploy/systemd/*.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now claude-buddy-hub claude-buddy-ptt
+journalctl --user -u claude-buddy-ptt -f
+```
+
+- O hub sobe sozinho no login (`claude-buddy-hub.service`); o PTT sobe com a sessão gráfica (`claude-buddy-ptt.service`). Os caminhos assumem o clone em `~/personal/ClaudeBuddy`.
+- Configuração: `BUDDY_PTT_KEY` (padrão `f9`), `BUDDY_PTT_ENTER=0` para só digitar sem Enter, `BUDDY_STT_MODEL` no hub (padrão `small`; `large-v3-turbo` acerta mais jargão, mas é bem mais lento em CPU), `BUDDY_STT_LANGUAGE` (padrão `pt`; vazio = detectar).
+- O modelo carrega na primeira transcrição (~600 MB de RAM no hub) e fica em memória.
+- Toques com menos de 0,4 s são ignorados; frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org") são descartadas.
+
 ## Comportamento das aprovações
 
 - O hook `PermissionRequest` só espera o Buddy **se houver um Buddy conectado**. Sem Buddy, devolve na hora e o diálogo normal aparece.
@@ -73,7 +90,8 @@ O firmware do ESP32 vai falar exatamente esse protocolo; o simulador é a refer�
 
 - [x] Fase 0–2: hub, hooks, aprovação, ditado via tmux, simulador
 - [ ] Atalho de ditado no notebook Windows → hub
-- [ ] STT no servidor (faster-whisper; GPU do desktop quando disponível)
+- [x] STT no hub (faster-whisper em CPU) + segurar F9 no Ubuntu
+- [ ] STT na GPU do desktop Windows, com fallback para a CPU do hub
 - [ ] Firmware ESP32-C5 (LVGL + LovyanGFX), testado no Wokwi
 - [ ] Carcaça impressa (Bambu A1)
 - [ ] Agente falante (TTS)

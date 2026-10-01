@@ -45,7 +45,11 @@ Feito (fases 0–2):
   - O rosto é um sprite em pixel art do mascote do Claude Code, refeito a partir do logo do terminal (`BODY`/`EYES` no JS; 1 unidade = 10 px). **Uso pessoal apenas:** trocar por um personagem próprio antes de publicar o repo ou a carcaça. A grade de pixels porta direto para o firmware (LVGL canvas).
   - Na lista há um botão "◀ Buddy"; lista e detalhe voltam sozinhos para o rosto após 30 s sem toque.
 - `hub/buddy_hub/local_sessions.py`: lê `~/.claude/sessions/<pid>.json` (nome do `/rename`, busy/idle/waiting, pane tmux) e corrige o que os hooks não reportam. Detalhes no README.
-- `tests/`: 30 testes passando (`pytest -q tests`).
+- `hub/buddy_hub/stt.py` + `POST /api/transcribe`: faster-whisper `small` em CPU, carregado na primeira chamada. `av<16` fixado (o faster-whisper 1.2.x quebra com PyAV 16+).
+- `ptt/buddy_ptt.py`: segurar F9 no Ubuntu (X11) → `pw-record` → hub → digita na janela em foco + Enter. `pynput` instalado com `--no-deps` (o `evdev` só serve para Wayland e precisa de `python3-dev`).
+- `deploy/systemd/`: `claude-buddy-hub` (sobe no login) e `claude-buddy-ptt` (sobe com a sessão gráfica). Substituem o hub em tmux.
+- Simulador: o rótulo de "trabalhando" imita o spinner do Claude Code (`· ✢ ✳ ✶ ✻ ✽` + verbos como "Accomplishing…"); ao terminar mostra "✻ Brewed for 1m 3s · <sessão>".
+- `tests/`: 31 testes passando (`pytest -q tests`).
 
 **Validado no Ubuntu em 2026-10-01** com uma sessão real em tmux: status, ditado via `tmux send-keys`, aprovar e negar (pelo Buddy falso via WebSocket e pelo simulador no Chrome), timeout caindo para o diálogo normal.
 
@@ -54,13 +58,13 @@ Aprendizados da validação:
 - Sessões já abertas recarregam os hooks quando o `settings.json` muda.
 - O modo padrão do Claude Code agora é auto mode; aprovação pelo Buddy só faz sentido em manual mode.
 - O backend de ditado é escolhido quando o hub sobe: instalar o tmux depois exige reiniciar o hub.
-- No Ubuntu o hub roda numa sessão tmux própria: `tmux new -d -s buddy-hub -c hub '../.venv/bin/python -m buddy_hub'`.
+- No Ubuntu o hub roda como serviço systemd de usuário (`deploy/systemd/`); logs em `journalctl --user -u claude-buddy-hub -f`.
 
 ## Próximos passos (em ordem)
 
 1. ~~No Ubuntu: validar hub + hooks + tmux com uma sessão real~~ (feito em 2026-10-01; clone em `~/personal/ClaudeBuddy`).
 2. Atalho de ditado no notebook Windows (segurar tecla → mic → STT → `POST /api/dictate` no hub via Tailscale).
-3. STT no servidor (faster-whisper; GPU do desktop quando disponível).
+3. STT na GPU do desktop: worker faster-whisper (CUDA, `large-v3-turbo`) no Windows via Tailscale; o hub tenta a GPU primeiro e cai para a CPU local se o desktop estiver desligado, ocupado ou lento. O ponto de troca é a classe `Transcriber` em `stt.py`. (STT em CPU no hub + F9 no Ubuntu: feito em 2026-10-01.)
 4. Firmware ESP32-C5: ESP-IDF 5.5+ ou Arduino core 3.3+, LVGL + LovyanGFX, mesmo protocolo do simulador; testar no Wokwi (extensão do VS Code para alcançar o hub local).
 5. Carcaça na Bambu A1 (estilo TV retrô com antena + LED; OpenSCAD paramétrico; mic na frente, speaker em câmara separada; PLA/PETG; sem logo da Anthropic se publicar).
 6. Agente falante.
