@@ -391,14 +391,30 @@ function speak(msg) {
   speechQueue.push(msg);
   if (!talking) playNext();
 }
-function playNext() {
+// Replies arrive as mono WAV. Played through Web Audio they are upmixed to both
+// ears and boosted, so they sit at the level of the chime and other sounds.
+const SPEECH_GAIN = 1.8;
+async function playNext() {
   const msg = speechQueue.shift();
   if (!msg) { talking = null; render(); return; }
-  talking = msg.text; show("face");
-  const audio = new Audio(`${msg.url}?token=${encodeURIComponent(token)}`);
-  audio.onended = audio.onerror = () => playNext();
-  audio.play().catch(err => { log("áudio bloqueado pelo navegador: clique na página uma vez"); playNext(); });
-  render();
+  talking = msg.text; show("face"); render();
+  try {
+    audio = audio || new AudioContext();
+    if (audio.state === "suspended") await audio.resume();
+    const r = await fetch(`${msg.url}?token=${encodeURIComponent(token)}`);
+    const buffer = await audio.decodeAudioData(await r.arrayBuffer());
+    const src = audio.createBufferSource(), gain = audio.createGain();
+    // The hub already normalizes to about 0 dBFS peaks, so the boost needs a
+    // limiter after it or the loud syllables clip (the "chiado").
+    const limiter = new DynamicsCompressorNode(audio, { threshold: -3, knee: 2, ratio: 20, attack: 0.002, release: 0.1 });
+    src.buffer = buffer; gain.gain.value = SPEECH_GAIN;
+    src.connect(gain).connect(limiter).connect(audio.destination);
+    src.onended = () => playNext();
+    src.start();
+  } catch (err) {
+    log("não consegui tocar a fala (clique na página uma vez se o navegador bloqueou o som)");
+    playNext();
+  }
 }
 
 // ---------- sound ----------
@@ -408,7 +424,8 @@ function beep(freqs) {
     audio = audio || new AudioContext();
     freqs.forEach((f, i) => {
       const o = audio.createOscillator(), g = audio.createGain();
-      o.frequency.value = f; o.type = "square"; g.gain.value = 0.04;
+      // Soft sine chime: the old square wave at the same gain was much louder than the voice.
+      o.frequency.value = f; o.type = "sine"; g.gain.value = 0.05;
       o.connect(g).connect(audio.destination);
       o.start(audio.currentTime + i * 0.12); o.stop(audio.currentTime + i * 0.12 + 0.09);
     });
