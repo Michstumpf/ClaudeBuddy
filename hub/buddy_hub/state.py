@@ -6,6 +6,8 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
+from .local_sessions import parse_tmux
+
 # Commands that must never be approved by voice, only by a deliberate tap.
 DANGEROUS_PATTERNS = [
     r"\brm\s+-[a-z]*r[a-z]*f",
@@ -56,6 +58,9 @@ class Session:
     tmux_pane: str | None = None
     permission_mode: str | None = None
     updated_at: float = field(default_factory=time.time)
+    # Name given with /rename, from the local session registry. Wins over the
+    # tmux session / folder name.
+    title: str | None = None
 
 
 @dataclass
@@ -81,6 +86,7 @@ class Hub:
         self.approvals: dict[str, Approval] = {}
         self.devices: set = set()  # connected websockets
         self._listeners: list = []  # async callables(snapshot, event)
+        self._local_ids: set[str] = set()  # sessions seen in the local registry
 
     # ---- snapshot / broadcast -------------------------------------------------
 
@@ -106,12 +112,12 @@ class Hub:
         sid = payload.get("session_id") or "unknown"
         extra = payload.get("buddy", {}) or {}
         cwd = payload.get("cwd", "")
-        name = extra.get("tmux_session") or (cwd.replace("\\", "/").rstrip("/").split("/")[-1] or sid[:8])
+        derived = extra.get("tmux_session") or cwd.replace("\\", "/").rstrip("/").split("/")[-1]
         session = self.sessions.get(sid)
         if session is None:
-            session = Session(id=sid, name=name, host=extra.get("host", "?"), cwd=cwd)
+            session = Session(id=sid, name=derived or sid[:8], host=extra.get("host", "?"), cwd=cwd)
             self.sessions[sid] = session
-        session.name = name
+        session.name = session.title or derived or session.name
         session.cwd = cwd or session.cwd
         session.host = extra.get("host", session.host)
         session.tmux_pane = extra.get("tmux_pane") or session.tmux_pane
@@ -155,6 +161,59 @@ class Hub:
 
         await self.notify(ui_event)
         return response
+
+    # ---- local session registry ----------------------------------------------
+
+    def reconcile(self, entries: list[dict], host: str) -> bool:
+        """Merge ~/.claude/sessions entries (see local_sessions.py). Returns True if anything changed.
+
+        A registry status only overrides the hub when it is newer than the last
+        hook event, so a hook that just arrived is never undone by a stale file.
+        """
+        before = self.snapshot()
+        seen = set()
+        for entry in entries:
+            sid = entry["sessionId"]
+            seen.add(sid)
+            tmux_name, pane = parse_tmux(entry.get("tmux"))
+            # A /rename name always wins; Claude Code's derived name (e.g. "git-d6")
+            # only beats the bare folder name when there is no tmux session name.
+            title = entry.get("name") if entry.get("nameSource") == "user" or not tmux_name else None
+            stamp = (entry.get("statusUpdatedAt") or entry.get("updatedAt") or 0) / 1000
+            session = self.sessions.get(sid)
+            if session is None:
+                cwd = entry.get("cwd", "")
+                session = Session(
+                    id=sid,
+                    name=tmux_name or cwd.rstrip("/").split("/")[-1] or sid[:8],
+                    host=host,
+                    cwd=cwd,
+                    status="working" if entry.get("status") == "busy" else "idle",
+                    tmux_pane=pane,
+                    updated_at=stamp,
+                )
+                self.sessions[sid] = session
+            self._local_ids.add(sid)
+            if title:
+                session.title = session.name = title
+            session.tmux_pane = session.tmux_pane or pane
+
+            status = entry.get("status")
+            if stamp <= session.updated_at:
+                continue
+            if status == "idle" and session.status in ("working", "waiting", "offline"):
+                session.status, session.updated_at = "idle", stamp
+            elif status == "busy" and session.status in ("idle", "done", "waiting", "offline"):
+                session.status, session.updated_at = "working", stamp
+            elif status == "waiting" and session.status in ("idle", "done", "working", "offline"):
+                # A permission dialog is open in the terminal / Remote Control.
+                session.status, session.updated_at = "waiting", stamp
+
+        for sid in self._local_ids - seen:  # process gone without SessionEnd
+            self._local_ids.discard(sid)
+            if sid in self.sessions:
+                self.sessions[sid].status = "offline"
+        return self.snapshot() != before
 
     # ---- approvals ------------------------------------------------------------
 

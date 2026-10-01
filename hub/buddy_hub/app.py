@@ -7,9 +7,12 @@
 - GET  /            the Buddy simulator
 """
 
+import asyncio
 import hmac
 import json
 import logging
+import socket
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -17,6 +20,7 @@ from fastapi.responses import FileResponse
 
 from .config import Settings
 from .dictation import make_sender
+from .local_sessions import read_local_sessions
 from .state import Hub
 
 log = logging.getLogger("buddy.hub")
@@ -27,7 +31,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     hub = Hub(approval_timeout=settings.approval_timeout)
     sender = make_sender(settings.dictation_backend)
-    app = FastAPI(title="Claude Buddy hub")
+
+    async def watch_local_sessions() -> None:
+        host = socket.gethostname()
+        while True:
+            try:
+                entries = await asyncio.to_thread(read_local_sessions, settings.sessions_dir)
+                if hub.reconcile(entries, host):
+                    await hub.notify(None)
+            except Exception:
+                log.exception("reading %s failed", settings.sessions_dir)
+            await asyncio.sleep(settings.sessions_poll)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        task = asyncio.create_task(watch_local_sessions()) if settings.sessions_dir else None
+        yield
+        if task:
+            task.cancel()
+
+    app = FastAPI(title="Claude Buddy hub", lifespan=lifespan)
     app.state.hub = hub
     app.state.sender = sender
 

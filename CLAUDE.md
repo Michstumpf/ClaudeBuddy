@@ -38,17 +38,25 @@ Rede entre elas: Tailscale (planejado). Áudio/transcrição nunca saem de casa;
 
 ## Estado atual
 
-Feito (fases 0–2, testado só no Windows):
+Feito (fases 0–2):
 - `hub/` FastAPI: estado das sessões, broker de aprovações, ditado (tmux ou dry-run), WebSocket do dispositivo. Protocolo no README.
 - `hooks/buddy_hook.py` (stdlib, no-op se o hub cair) + `hooks/settings.example.json`.
 - `simulator/index.html`: tela 320×240, rostos, lista, aprovação, ditado via Web Speech API, painel de eventos falsos.
-- `tests/`: 17 testes passando (`pytest -q tests`).
+- `hub/buddy_hub/local_sessions.py`: lê `~/.claude/sessions/<pid>.json` (nome do `/rename`, busy/idle/waiting, pane tmux) e corrige o que os hooks não reportam. Detalhes no README.
+- `tests/`: 30 testes passando (`pytest -q tests`).
 
-**Ainda não validado de verdade:** hooks ligados a uma sessão real do Claude Code e `tmux send-keys` real.
+**Validado no Ubuntu em 2026-10-01** com uma sessão real em tmux: status, ditado via `tmux send-keys`, aprovar e negar (pelo Buddy falso via WebSocket e pelo simulador no Chrome), timeout caindo para o diálogo normal.
+
+Aprendizados da validação:
+- Esc no meio de uma resposta não dispara `Stop`; negar no terminal não dispara `PostToolUse`. O registro local cobre os dois.
+- Sessões já abertas recarregam os hooks quando o `settings.json` muda.
+- O modo padrão do Claude Code agora é auto mode; aprovação pelo Buddy só faz sentido em manual mode.
+- O backend de ditado é escolhido quando o hub sobe: instalar o tmux depois exige reiniciar o hub.
+- No Ubuntu o hub roda numa sessão tmux própria: `tmux new -d -s buddy-hub -c hub '../.venv/bin/python -m buddy_hub'`.
 
 ## Próximos passos (em ordem)
 
-1. **No Ubuntu:** venv + `pip install -r hub/requirements.txt pytest`, rodar os testes, subir o hub, mesclar `hooks/settings.example.json` em `~/.claude/settings.json` (ajustar o caminho do script), abrir uma sessão em `tmux new -s <nome> claude` e validar status + aprovação + ditado com o simulador.
+1. ~~No Ubuntu: validar hub + hooks + tmux com uma sessão real~~ (feito em 2026-10-01; clone em `~/personal/ClaudeBuddy`).
 2. Atalho de ditado no notebook Windows (segurar tecla → mic → STT → `POST /api/dictate` no hub via Tailscale).
 3. STT no servidor (faster-whisper; GPU do desktop quando disponível).
 4. Firmware ESP32-C5: ESP-IDF 5.5+ ou Arduino core 3.3+, LVGL + LovyanGFX, mesmo protocolo do simulador; testar no Wokwi (extensão do VS Code para alcançar o hub local).
@@ -58,7 +66,7 @@ Feito (fases 0–2, testado só no Windows):
 ## Rodando
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r hub/requirements.txt pytest
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt   # ou uv, se faltar python3-venv
 .venv/bin/python -m pytest -q tests
 cd hub && ../.venv/bin/python -m buddy_hub            # --host 0.0.0.0 para o ESP32 na LAN
 ```

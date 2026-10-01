@@ -31,6 +31,10 @@ class Settings:
     approval_timeout: float = 20.0
     # "auto" uses tmux when available, otherwise dry-run (just logs).
     dictation_backend: str = "auto"
+    # Claude Code's local session registry. None disables reading it (tests,
+    # or a hub running on a different machine than the sessions).
+    sessions_dir: Path | None = None
+    sessions_poll: float = 3.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -38,4 +42,14 @@ class Settings:
             token=load_or_create_token(),
             approval_timeout=float(os.environ.get("BUDDY_APPROVAL_TIMEOUT", "20")),
             dictation_backend=os.environ.get("BUDDY_DICTATION", "auto"),
+            sessions_dir=_sessions_dir(),
         )
+
+
+def _sessions_dir() -> Path | None:
+    """BUDDY_SESSIONS_DIR overrides; set it to an empty string to disable."""
+    value = os.environ.get("BUDDY_SESSIONS_DIR")
+    if value == "":
+        return None
+    path = Path(value).expanduser() if value else Path.home() / ".claude" / "sessions"
+    return path if path.is_dir() else None

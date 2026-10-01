@@ -1,0 +1,5 @@
+-r hub/requirements.txt
+pytest
+pytest-timeout
+# starlette>=1.x TestClient needs httpx2 (older versions used httpx)
+httpx2
