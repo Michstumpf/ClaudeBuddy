@@ -80,7 +80,10 @@ if (-not $NoVoice) {
     Step "GPU voice: PyTorch (CUDA 12.4) + coqui-tts (several minutes, ~3 GB)"
     # One command, with the CUDA index as an extra source, so pip can never
     # swap in the CPU-only torch from PyPI while resolving coqui-tts.
-    Invoke-Native "pip install (voice)" { & $Python -m pip install "torch==2.5.1" "torchaudio==2.5.1" coqui-tts `
+    # coqui-tts 0.27 asks for transformers>=4.57 with no upper bound, but XTTS
+    # imports transformers.pytorch_utils.isin_mps_friendly, gone in transformers 5.
+    Invoke-Native "pip install (voice)" { & $Python -m pip install "torch==2.5.1" "torchaudio==2.5.1" `
+        "coqui-tts>=0.27,<0.28" "transformers>=4.57,<5" `
         --extra-index-url https://download.pytorch.org/whl/cu124 --quiet }
 }
 
