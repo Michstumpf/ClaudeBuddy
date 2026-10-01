@@ -15,6 +15,7 @@ Um mascote de mesa (ESP32-C5 NM-CYD-C5, tela 2.8" touch) que mostra o que as ses
 | `hub/` | Servidor (FastAPI). Recebe hooks, mantém o estado das sessões, segura pedidos de permissão esperando o Buddy, entrega ditado via tmux. |
 | `hooks/buddy_hook.py` | Hook do Claude Code. Só stdlib. Se o hub estiver fora do ar, não faz nada e o Claude Code segue normal. |
 | `simulator/` | O Buddy no navegador, com a tela 320×240 exata, para desenvolver antes do hardware. Ditado via Web Speech API (Chrome/Edge). |
+| `firmware/` | Firmware do ESP32 (LVGL), testado no Wokwi com capturas de cada tela. Ver `firmware/README.md`. |
 | `tests/` | `pytest` |
 
 ## Rodando
