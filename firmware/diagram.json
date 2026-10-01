@@ -7,14 +7,14 @@
       "type": "board-esp32-s3-devkitc-1",
       "id": "esp",
       "top": 0,
-      "left": 0,
+      "left": 430,
       "attrs": {}
     },
     {
       "type": "board-ili9341-cap-touch",
       "id": "lcd",
       "top": 30,
-      "left": -420,
+      "left": 0,
       "rotate": 270,
       "attrs": {}
     }
