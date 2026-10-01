@@ -15,10 +15,15 @@
     4. allows TCP 8766 inbound from the Tailscale range only
     5. registers a logon task that starts the worker hidden (pythonw), logging
        to %LOCALAPPDATA%\ClaudeBuddy\worker.log
+
+  The GPU voice (XTTS-v2: PyTorch with CUDA + coqui-tts, ~3 GB of downloads
+  plus ~1.8 GB of model) is installed too; pass -NoVoice to skip it. The XTTS
+  model license is non-commercial (personal use only).
 #>
 param(
     [int]$Port = 8766,
-    [string]$Model = "large-v3-turbo"
+    [string]$Model = "large-v3-turbo",
+    [switch]$NoVoice
 )
 $ErrorActionPreference = "Stop"
 $Repo = (Resolve-Path "$PSScriptRoot\..\..").Path
@@ -71,6 +76,13 @@ if (-not (Test-Path $Python)) {
 }
 Invoke-Native "upgrading pip" { & $Python -m pip install --upgrade pip --quiet }
 Invoke-Native "pip install" { & $Python -m pip install -r (Join-Path $Repo "hub\requirements-gpu.txt") --quiet }
+if (-not $NoVoice) {
+    Step "GPU voice: PyTorch (CUDA 12.4) + coqui-tts (several minutes, ~3 GB)"
+    # One command, with the CUDA index as an extra source, so pip can never
+    # swap in the CPU-only torch from PyPI while resolving coqui-tts.
+    Invoke-Native "pip install (voice)" { & $Python -m pip install "torch==2.5.1" "torchaudio==2.5.1" coqui-tts `
+        --extra-index-url https://download.pytorch.org/whl/cu124 --quiet }
+}
 
 Step "Token"
 function Read-TokenFile {
@@ -90,7 +102,7 @@ if (-not (Read-TokenFile)) {
 }
 Write-Host ("token: {0} ({1} chars)" -f $TokenFile, (Read-TokenFile).Length)
 
-Step "GPU check (loads $Model once; the first run downloads it)"
+Step "GPU check (loads $Model$(if (-not $NoVoice) { ' and XTTS-v2' }) once; the first run downloads them)"
 $HubDir = Join-Path $Repo "hub"
 $check = @"
 import sys
@@ -102,6 +114,18 @@ print('gpu:', gpu_status())
 Transcriber(model='$Model', device='cuda', compute_type='float16')._load()
 print('model loaded on cuda: OK')
 "@
+if (-not $NoVoice) {
+    $check += @"
+
+from buddy_hub.worker import XttsSpeaker
+import time
+voice = XttsSpeaker()
+voice.load()
+started = time.time()
+wav = voice.synthesize('Ol\u00e1! Eu sou o Buddy, e agora falo pela placa de v\u00eddeo.')
+print('voice on cuda: OK (%d KB in %.1fs)' % (len(wav) // 1024, time.time() - started))
+"@
+}
 $checkFile = Join-Path $env:TEMP "claude-buddy-gpu-check.py"
 Set-Content -Path $checkFile -Value $check -Encoding ascii
 Push-Location (Join-Path $Repo "hub")

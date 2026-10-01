@@ -32,7 +32,7 @@ from .local_sessions import read_local_sessions
 from .state import Hub, voice_command
 from .stt import RemoteFirst, Transcriber
 from .summarizer import Summarizer, load_key
-from .tts import Speaker, speakable
+from .tts import RemoteFirstSpeaker, Speaker, speakable
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
@@ -46,6 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.stt_remote:
         transcriber = RemoteFirst(settings.stt_remote, settings.token, local=transcriber)
     speaker = Speaker(settings.tts_voice)
+    if settings.stt_remote:  # the same desktop worker also has the GPU voice
+        speaker = RemoteFirstSpeaker(settings.stt_remote, settings.token, local=speaker)
     summarizer = Summarizer(load_key())
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
     # When several Buddies are connected (e.g. the device plus a simulator tab),

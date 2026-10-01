@@ -79,7 +79,7 @@ Quando uma pergunta é **feita por voz** (F9 ou ditado pelo Buddy), o hub fala a
 - **Como o hub sabe:** guarda o texto de cada transcrição por 60 s; o `UserPromptSubmit` que chega com esse texto (ou começando por ele) marca a sessão, e o `Stop` dela é falado.
 - **O que é falado:** um resumo de 1-2 frases escrito pelo **Claude Haiku** (`summarizer.py`), com a pergunta como contexto. Chave em `~/.config/claude-buddy/anthropic_key` (ou `BUDDY_ANTHROPIC_API_KEY`) — use a chave **aprovada pela Portrait**, porque perguntas por voz em sessões da Portrait mandam a resposta para ela. Sem chave, ou se o Haiku falhar ou demorar mais de 6 s, fala as primeiras 1-3 frases da resposta sem código, tabelas, links, emojis ou markdown (`speakable()` em `tts.py`).
 - **Modo noite:** dizer "boa noite" (ou "vou dormir", "encerrando por hoje") por voz, numa frase curta, faz o Buddy dormir: rosto dormindo, sem bipes, sem falar. Pedidos de aprovação ainda aparecem, sem bipe. Acorda com "bom dia", com qualquer outro ditado ou com um toque na tela.
-- **Voz:** Piper, local, ~0,15 s por frase. Vozes pt-BR: `faber` (padrão), `cadu`, `jeff` (`BUDDY_TTS_VOICE`).
+- **Voz:** **XTTS-v2 na GPU do desktop** (o mesmo worker da transcrição, rota `/speak`; voz `BUDDY_XTTS_SPEAKER`, padrão "Gilberto Mathias", ou `BUDDY_XTTS_SPEAKER_WAV` para clonar uma voz de um WAV de 6-30 s). Se o desktop estiver indisponível, ocupado ou sem a voz instalada, o hub fala com o **Piper** local (~0,15 s por frase; vozes pt-BR `faber` (padrão), `cadu`, `jeff` em `BUDDY_TTS_VOICE`). A licença do modelo XTTS-v2 é só para uso não comercial.
 - **Onde toca** (`BUDDY_SPEAK_ON`): `auto` (padrão) toca no Buddy/simulador se houver um conectado, senão nas caixas do hub (`pw-play`); também `local`, `devices`, `off`. O Buddy recebe `{"type":"speech","id","session","text","url"}` e busca o WAV em `GET /api/speech/<id>?token=…`.
 
 ```bash
@@ -112,7 +112,7 @@ F9 / Buddy ──áudio──▶ hub (Ubuntu) ──Tailscale──▶ worker (d
    ```powershell
    powershell -ExecutionPolicy Bypass -File deploy\windows\install-worker.ps1
    ```
-   O script cria o venv, instala as dependências, pede o token do hub (`cat ~/.config/claude-buddy/token` no Ubuntu), testa a GPU (baixa ~1,6 GB na primeira vez), libera a porta 8766 no firewall **só para a faixa do Tailscale** e agenda o worker para subir no login, escondido. Log em `%LOCALAPPDATA%\ClaudeBuddy\worker.log`. Pode rodar de novo depois de um `git pull`.
+   O script cria o venv, instala as dependências (incluindo a voz XTTS-v2: PyTorch com CUDA + coqui-tts, ~3 GB; `-NoVoice` pula), pede o token do hub (`cat ~/.config/claude-buddy/token` no Ubuntu), testa a GPU (baixa ~1,6 GB na primeira vez), libera a porta 8766 no firewall **só para a faixa do Tailscale** e agenda o worker para subir no login, escondido. Log em `%LOCALAPPDATA%\ClaudeBuddy\worker.log`. Pode rodar de novo depois de um `git pull`.
 
 ### 3. Ubuntu: apontar o hub para o desktop
 

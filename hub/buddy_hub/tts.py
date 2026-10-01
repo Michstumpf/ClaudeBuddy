@@ -1,14 +1,18 @@
 """Spoken replies: turn a Claude Code answer into a short sentence and a WAV.
 
-Text-to-speech runs locally with Piper (pt-BR voice), so nothing leaves home.
-Optional: without piper-tts or the voice file, the hub runs without speech.
+Text-to-speech runs on the desktop's GPU worker (XTTS-v2) when available, else
+locally with Piper (pt-BR voice); either way audio never leaves home.
+Optional: without a worker voice, piper-tts or the voice file, the hub runs
+without speech.
 """
 
 import io
+import json
 import logging
 import re
 import threading
 import time
+import urllib.request
 import wave
 from pathlib import Path
 
@@ -92,3 +96,51 @@ class Speaker:
             with wave.open(buf, "wb") as wav:
                 self._voice.synthesize_wav(text, wav)
             return buf.getvalue()
+
+
+class RemoteFirstSpeaker:
+    """XTTS-v2 on the desktop's GPU worker first, Piper on the hub as fallback.
+
+    Same rule as speech-to-text: skip the worker when it is down, slow to
+    answer /health, busy (e.g. a game) or has no voice installed.
+    """
+
+    def __init__(self, url: str, token: str, local: Speaker, health_timeout: float = 1.0,
+                 speak_timeout: float = 15.0):
+        self.url = url.rstrip("/")
+        self.token = token
+        self.local = local
+        self.health_timeout = health_timeout
+        self.speak_timeout = speak_timeout
+
+    def available(self) -> bool:
+        return True  # the worker may have a voice even when Piper is not installed
+
+    def _get(self, path: str, timeout: float) -> dict:
+        req = urllib.request.Request(f"{self.url}{path}", headers={"X-Buddy-Token": self.token})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read())
+
+    def _speak_remote(self, text: str) -> bytes:
+        req = urllib.request.Request(
+            f"{self.url}/speak", data=json.dumps({"text": text}).encode("utf-8"), method="POST",
+            headers={"X-Buddy-Token": self.token, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=self.speak_timeout) as resp:
+            return resp.read()
+
+    def synthesize(self, text: str) -> bytes:
+        try:
+            health = self._get("/health", self.health_timeout)
+            if not health.get("tts"):
+                why = "has no voice"
+            elif health.get("busy"):
+                why = f"busy ({health.get('reason')})"
+            else:
+                return self._speak_remote(text)
+        except Exception as exc:
+            why = f"unreachable ({exc.__class__.__name__})"
+        log.info("gpu worker %s: speaking with Piper on the hub", why)
+        if not self.local.available():
+            raise RuntimeError(f"gpu worker {why} and Piper is not installed on the hub")
+        return self.local.synthesize(text)

@@ -98,3 +98,70 @@ def test_no_fallback_available_raises(monkeypatch):
     monkeypatch.setattr(stt.Transcriber, "available", staticmethod(lambda: False))
     with pytest.raises(RuntimeError, match="not installed"):
         rf.transcribe(b"audio")
+
+
+# ---- GPU voice (XTTS-v2 on the worker) with Piper fallback ---------------------
+
+from buddy_hub.tts import RemoteFirstSpeaker  # noqa: E402
+
+
+class FakeVoice:
+    def __init__(self, tag=b"PIPER"):
+        self.tag, self.calls = tag, 0
+
+    def available(self):
+        return True
+
+    def synthesize(self, text):
+        self.calls += 1
+        return self.tag + text.encode()
+
+
+def test_worker_speak_endpoint():
+    c = TestClient(create_app(TOKEN, FakeTranscriber(), gpu_probe=lambda: None, speaker=FakeVoice(b"XTTS")))
+    assert c.get("/health", headers=H).json()["tts"] is True
+    r = c.post("/speak", json={"text": "olá"}, headers=H)
+    assert r.status_code == 200 and r.content == "XTTSolá".encode()
+    assert c.post("/speak", json={"text": " "}, headers=H).status_code == 400
+    assert c.post("/speak", json={"text": "x"}).status_code == 401
+
+
+def test_worker_without_voice():
+    c = worker()
+    assert c.get("/health", headers=H).json()["tts"] is False
+    assert c.post("/speak", json={"text": "olá"}, headers=H).status_code == 503
+
+
+def remote_speaker(monkeypatch, health, speak=b"XTTS"):
+    local = FakeVoice()
+    rs = RemoteFirstSpeaker("http://desktop:8766", TOKEN, local=local)
+
+    def fake_get(path, timeout):
+        if isinstance(health, Exception):
+            raise health
+        return health
+
+    def fake_speak(text):
+        if isinstance(speak, Exception):
+            raise speak
+        return speak
+
+    monkeypatch.setattr(rs, "_get", fake_get)
+    monkeypatch.setattr(rs, "_speak_remote", fake_speak)
+    return rs, local
+
+
+def test_speaks_on_gpu_when_ready(monkeypatch):
+    rs, local = remote_speaker(monkeypatch, {"ok": True, "busy": False, "tts": True})
+    assert rs.synthesize("oi") == b"XTTS" and local.calls == 0
+
+
+@pytest.mark.parametrize("health,speak", [
+    (ConnectionRefusedError(), b""),                          # desktop off
+    ({"ok": True, "busy": False, "tts": False}, b""),         # worker without the voice
+    ({"ok": True, "busy": True, "reason": "gpu 95% busy", "tts": True}, b""),  # gaming
+    ({"ok": True, "busy": False, "tts": True}, TimeoutError()),  # voice too slow
+])
+def test_voice_falls_back_to_piper(monkeypatch, health, speak):
+    rs, local = remote_speaker(monkeypatch, health, speak)
+    assert rs.synthesize("oi") == b"PIPERoi" and local.calls == 1
