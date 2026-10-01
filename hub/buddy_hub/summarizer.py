@@ -8,14 +8,20 @@ The key must be the one approved for Portrait work: voice turns can happen in
 Portrait sessions, so the answer text is Portrait context.
 """
 
+import json
 import logging
 import os
+import time
 from pathlib import Path
 
 log = logging.getLogger("buddy.summarizer")
 
 KEY_FILE = Path.home() / ".config" / "claude-buddy" / "anthropic_key"
 MODEL = "claude-haiku-4-5"
+# USD per million tokens for MODEL (Claude Haiku 4.5), for the usage log.
+PRICE_IN, PRICE_OUT = 1.00, 5.00
+# One JSON line per call with token counts and cost only: never any text.
+USAGE_FILE = Path.home() / ".local" / "share" / "claude-buddy" / "haiku_usage.jsonl"
 # Answers can be long; the start carries the conclusion, the tail rarely matters
 # for a spoken line, and a smaller input keeps latency down.
 ANSWER_MAX_CHARS = 6000
@@ -72,7 +78,50 @@ class Summarizer:
         except anthropic.APIConnectionError as exc:  # includes APITimeoutError
             log.warning("haiku unreachable (%s); using the plain extract", exc.__class__.__name__)
             return None
+        record_usage(response)
         if response.stop_reason not in ("end_turn", "max_tokens"):
             return None
         text = "".join(block.text for block in response.content if block.type == "text").strip()
         return text or None
+
+
+def record_usage(response) -> None:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    tokens_in = (usage.input_tokens or 0) + (getattr(usage, "cache_read_input_tokens", 0) or 0) \
+        + (getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    tokens_out = usage.output_tokens or 0
+    entry = {"ts": round(time.time(), 1), "model": MODEL, "input_tokens": tokens_in, "output_tokens": tokens_out,
+             "cost_usd": round((tokens_in * PRICE_IN + tokens_out * PRICE_OUT) / 1e6, 6)}
+    try:
+        USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with USAGE_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        log.warning("could not write %s", USAGE_FILE)
+    log.info("haiku: %d in / %d out tokens, US$ %.5f", tokens_in, tokens_out, entry["cost_usd"])
+
+
+def usage_summary(now: float | None = None) -> dict:
+    """Totals for the current calendar month and all time, from the usage log."""
+    now = now or time.time()
+    month = time.strftime("%Y-%m", time.localtime(now))
+    totals = {"month": month, "month_calls": 0, "month_usd": 0.0, "all_calls": 0, "all_usd": 0.0,
+              "month_input_tokens": 0, "month_output_tokens": 0}
+    if USAGE_FILE.exists():
+        for line in USAGE_FILE.read_text(encoding="utf-8").splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            totals["all_calls"] += 1
+            totals["all_usd"] += e.get("cost_usd", 0.0)
+            if time.strftime("%Y-%m", time.localtime(e.get("ts", 0))) == month:
+                totals["month_calls"] += 1
+                totals["month_usd"] += e.get("cost_usd", 0.0)
+                totals["month_input_tokens"] += e.get("input_tokens", 0)
+                totals["month_output_tokens"] += e.get("output_tokens", 0)
+    totals["month_usd"] = round(totals["month_usd"], 4)
+    totals["all_usd"] = round(totals["all_usd"], 4)
+    return totals

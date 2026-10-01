@@ -31,7 +31,7 @@ from .dictation import make_sender
 from .local_sessions import read_local_sessions
 from .state import Hub, voice_command
 from .stt import RemoteFirst, Transcriber
-from .summarizer import Summarizer, load_key
+from .summarizer import Summarizer, load_key, usage_summary
 from .tts import RemoteFirstSpeaker, Speaker, speakable
 
 log = logging.getLogger("buddy.hub")
@@ -198,6 +198,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         hub.note_voice_text(result.get("text", ""))
         await apply_voice_command(result.get("text", ""))
         return result
+
+    @app.get("/api/usage")
+    async def usage(x_buddy_token: str | None = Header(None)):
+        """Claude Haiku spend for spoken summaries: this month and all time."""
+        check(x_buddy_token)
+        return await asyncio.to_thread(usage_summary)
 
     @app.get("/api/speech/{clip_id}")
     async def speech(clip_id: str, token: str | None = Query(None), x_buddy_token: str | None = Header(None)):

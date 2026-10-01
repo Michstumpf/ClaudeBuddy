@@ -216,6 +216,10 @@
     <p style="color:var(--muted);font-size:12px;margin:4px 0 0">As sessões falsas se chamam <code>fake-api</code> e <code>fake-web</code>; os botões alternam entre elas.</p>
   </section>
   <section>
+    <h2>Custo do resumo falado (Haiku)</h2>
+    <p class="conn" id="usage">—</p>
+  </section>
+  <section>
     <h2>Log</h2>
     <div id="log"></div>
   </section>
@@ -526,6 +530,18 @@ function fake(kind) {
     .catch(err => log("erro: " + err));
 }
 document.querySelectorAll("[data-fake]").forEach(b => b.onclick = () => fake(b.dataset.fake));
+
+async function refreshUsage() {
+  if (!token) return;
+  try {
+    const r = await fetch("/api/usage", { headers: { "X-Buddy-Token": token } });
+    if (!r.ok) return;
+    const u = await r.json();
+    $("usage").textContent = `${u.month}: US$ ${u.month_usd.toFixed(4)} em ${u.month_calls} falas · total US$ ${u.all_usd.toFixed(4)}`;
+  } catch {}
+}
+refreshUsage();
+setInterval(refreshUsage, 60000);
 
 $("token").addEventListener("change", () => {
   token = $("token").value.trim();

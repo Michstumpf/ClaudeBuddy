@@ -79,3 +79,21 @@ def test_voice_question_is_kept_for_the_summary_but_never_in_the_snapshot():
                                  "cwd": "/x/api", "prompt": "segredo da portrait"}))
     assert hub.voice_questions["s1"] == "segredo da portrait"
     assert "segredo" not in str(hub.snapshot())
+
+
+def test_usage_is_logged_without_text_and_summed(monkeypatch, tmp_path):
+    from buddy_hub import summarizer
+
+    monkeypatch.setattr(summarizer, "USAGE_FILE", tmp_path / "usage.jsonl")
+    resp = reply("Feito.")
+    resp.usage = SimpleNamespace(input_tokens=1200, output_tokens=40,
+                                 cache_read_input_tokens=0, cache_creation_input_tokens=0)
+    s = summarizer_with(resp)
+    for _ in range(3):
+        asyncio.run(s.summarize("pergunta secreta", "resposta secreta"))
+    log_text = (tmp_path / "usage.jsonl").read_text()
+    assert "secreta" not in log_text and "Feito" not in log_text
+    totals = summarizer.usage_summary()
+    # 1200 * $1/M + 40 * $5/M = $0.0014 per call
+    assert totals["month_calls"] == 3 and totals["month_usd"] == pytest.approx(0.0042)
+    assert totals["month_input_tokens"] == 3600 and totals["month_output_tokens"] == 120
