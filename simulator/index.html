@@ -35,7 +35,8 @@
   .view.on { display: block; }
   .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 22px; padding: 4px 8px; background: #1b1d22; display: flex; justify-content: space-between; color: #b9b4ad; }
   .face { position: absolute; left: 0; right: 0; top: 0; bottom: 22px; }
-  .label { position: absolute; top: 176px; left: 0; right: 0; text-align: center; color: #b9b4ad; }
+  .label { position: absolute; top: 176px; left: 8px; right: 8px; text-align: center; color: #b9b4ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .label .glyph { color: var(--accent); display: inline-block; width: 1.2em; }
 
   /* ---- the mascot: pixel sprite rebuilt from Claude Code's terminal logo ----
      Grid units (1 unit = 10 screen px). Body rows 0-7, legs rows 8-9; eyes are
@@ -241,9 +242,10 @@ function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj))
 
 function onMessage(msg) {
   if (msg.type === "state") {
+    trackWork(state.sessions, msg.sessions);
     state = msg;
     if (msg.event) {
-      lastEvent = msg.event; lastEventAt = Date.now();
+      lastEvent = msg.event; lastEventAt = Date.now(); donePast = pick(PAST);
       log(`evento: ${msg.event.kind} (${msg.event.session})`);
       if (msg.event.kind === "done") beep([880, 1320]);
       if (msg.event.kind === "attention" || msg.event.kind === "approval") beep([660, 660]);
@@ -268,8 +270,8 @@ function mood() {
   if (listening) return ["s-listen", "ouvindo…"];
   const ss = state.sessions.filter(s => s.status !== "offline");
   if (ss.some(s => s.status === "waiting")) return ["s-wait", "alguém precisa de você!"];
-  if (lastEvent && lastEvent.kind === "done" && Date.now() - lastEventAt < 8000) return ["s-done", `${lastEvent.session} terminou!`];
-  if (ss.some(s => s.status === "working")) return ["s-work", "trabalhando…"];
+  if (lastEvent && lastEvent.kind === "done" && Date.now() - lastEventAt < 8000) return ["s-done", doneLabel(lastEvent)];
+  if (ss.some(s => s.status === "working")) return ["s-work", null];  // label driven by the spinner
   if (ss.length) return ["s-idle", "tudo tranquilo"];
   return ["s-sleep", "zzz"];
 }
@@ -277,7 +279,8 @@ function mood() {
 function render() {
   const [m, label] = mood();
   if (!$("face").classList.contains(m)) { $("face").className = "face " + m; drawEyes(m); }
-  $("faceLabel").textContent = label;
+  if (label !== null) $("faceLabel").textContent = label;
+  else if (!spinTimer) startSpinner();
   $("device").classList.toggle("alert", state.pending.length > 0 || state.sessions.some(s => s.status === "waiting"));
   const counts = {};
   state.sessions.forEach(s => counts[s.status] = (counts[s.status] || 0) + 1);
@@ -420,6 +423,49 @@ rects($("cBody"), BODY.flatMap((row, y) => [...row.matchAll(/#+/g)].map(r => [r.
 rects($("cLegsA"), LEGS_A.map(([x, y]) => [x, y, 1, 2]));
 rects($("cLegsB"), LEGS_B.map(([x, y]) => [x, y, 1, 2]));
 drawEyes("s-sleep");
+
+// ---------- Claude Code's spinner: "✶ Accomplishing…" / "✻ Brewed for 42s" ----------
+const SPIN = ["·", "✢", "✳", "✶", "✻", "✽"];
+const SPIN_SEQ = [...SPIN, ...SPIN.slice(1, -1).reverse()];  // grows, then shrinks back
+const VERBS = ["Accomplishing", "Actualizing", "Baking", "Brewing", "Calculating", "Cerebrating", "Churning",
+  "Clauding", "Coalescing", "Cogitating", "Computing", "Conjuring", "Considering", "Cooking", "Crafting",
+  "Crunching", "Deliberating", "Finagling", "Forging", "Hatching", "Herding", "Honking", "Hustling", "Ideating",
+  "Inferring", "Manifesting", "Marinating", "Moseying", "Mulling", "Mustering", "Musing", "Noodling",
+  "Percolating", "Pondering", "Puttering", "Reticulating", "Ruminating", "Schlepping", "Shucking", "Simmering",
+  "Smooshing", "Spinning", "Stewing", "Synthesizing", "Thinking", "Transmuting", "Vibing", "Working"];
+const PAST = ["Baked", "Brewed", "Churned", "Cogitated", "Cooked", "Crunched", "Sautéed", "Worked"];
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+let spinTimer = null, spinFrame = 0, verb = "", verbAt = 0, donePast = PAST[0];
+const workingSince = {};  // session name -> ms when it started working
+
+function trackWork(before, after) {
+  const was = Object.fromEntries(before.map(s => [s.id, s.status]));
+  for (const s of after) {
+    if (s.status === "working" && was[s.id] !== "working") workingSince[s.name] = Date.now();
+  }
+}
+function duration(ms) {
+  const sec = Math.max(1, Math.round(ms / 1000));
+  return sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${sec % 60}s`;
+}
+function doneLabel(event) {
+  const since = workingSince[event.session];
+  return since ? `✻ ${donePast} for ${duration(lastEventAt - since)} · ${event.session}` : `✻ ${event.session} terminou!`;
+}
+function startSpinner() {
+  verb = pick(VERBS); verbAt = Date.now(); spinFrame = 0;
+  const glyph = document.createElement("span"), text = document.createElement("span");
+  glyph.className = "glyph";
+  $("faceLabel").replaceChildren(glyph, text);
+  const tick = () => {
+    if (!$("face").classList.contains("s-work")) { clearInterval(spinTimer); spinTimer = null; return; }
+    if (Date.now() - verbAt > 8000) { verb = pick(VERBS); verbAt = Date.now(); }
+    glyph.textContent = SPIN_SEQ[spinFrame++ % SPIN_SEQ.length];
+    text.textContent = `${verb}…`;
+  };
+  tick();
+  spinTimer = setInterval(tick, 120);
+}
 
 // ---------- idle blinking ----------
 setInterval(() => {
