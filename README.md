@@ -77,7 +77,8 @@ journalctl --user -u claude-buddy-ptt -f
 Quando uma pergunta é **feita por voz** (F9 ou ditado pelo Buddy), o hub fala a resposta da sessão quando ela termina. Perguntas digitadas continuam em silêncio, então as outras sessões não viram narração.
 
 - **Como o hub sabe:** guarda o texto de cada transcrição por 60 s; o `UserPromptSubmit` que chega com esse texto (ou começando por ele) marca a sessão, e o `Stop` dela é falado.
-- **O que é falado:** as primeiras 1-3 frases da resposta (até ~320 caracteres), sem código, tabelas, links, emojis ou markdown (`speakable()` em `tts.py`).
+- **O que é falado:** um resumo de 1-2 frases escrito pelo **Claude Haiku** (`summarizer.py`), com a pergunta como contexto. Chave em `~/.config/claude-buddy/anthropic_key` (ou `BUDDY_ANTHROPIC_API_KEY`) — use a chave **aprovada pela Portrait**, porque perguntas por voz em sessões da Portrait mandam a resposta para ela. Sem chave, ou se o Haiku falhar ou demorar mais de 6 s, fala as primeiras 1-3 frases da resposta sem código, tabelas, links, emojis ou markdown (`speakable()` em `tts.py`).
+- **Modo noite:** dizer "boa noite" (ou "vou dormir", "encerrando por hoje") por voz, numa frase curta, faz o Buddy dormir: rosto dormindo, sem bipes, sem falar. Pedidos de aprovação ainda aparecem, sem bipe. Acorda com "bom dia", com qualquer outro ditado ou com um toque na tela.
 - **Voz:** Piper, local, ~0,15 s por frase. Vozes pt-BR: `faber` (padrão), `cadu`, `jeff` (`BUDDY_TTS_VOICE`).
 - **Onde toca** (`BUDDY_SPEAK_ON`): `auto` (padrão) toca no Buddy/simulador se houver um conectado, senão nas caixas do hub (`pw-play`); também `local`, `devices`, `off`. O Buddy recebe `{"type":"speech","id","session","text","url"}` e busca o WAV em `GET /api/speech/<id>?token=…`.
 

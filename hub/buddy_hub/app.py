@@ -29,8 +29,9 @@ from fastapi.responses import FileResponse, Response
 from .config import Settings
 from .dictation import make_sender
 from .local_sessions import read_local_sessions
-from .state import Hub
+from .state import Hub, voice_command
 from .stt import RemoteFirst, Transcriber
+from .summarizer import Summarizer, load_key
 from .tts import Speaker, speakable
 
 log = logging.getLogger("buddy.hub")
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.stt_remote:
         transcriber = RemoteFirst(settings.stt_remote, settings.token, local=transcriber)
     speaker = Speaker(settings.tts_voice)
+    summarizer = Summarizer(load_key())
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
     # When several Buddies are connected (e.g. the device plus a simulator tab),
     # only the most recently used one speaks; otherwise the same reply plays
@@ -62,9 +64,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     async def speak_reply(session, answer: str) -> None:
         target = settings.speak_on
-        if target == "off" or not speaker.available():
+        if target == "off" or hub.night or not speaker.available():
             return
-        text = speakable(answer)
+        question = hub.voice_questions.pop(session.id, "")
+        text = await summarizer.summarize(question, answer) or speakable(answer)
         if not text:
             return
         try:
@@ -92,6 +95,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 hub.devices.discard(ws)
 
     hub.on_voice_reply = speak_reply
+
+    async def set_night(night: bool, why: str) -> None:
+        if hub.night != night:
+            hub.night = night
+            log.info("%s (%s)", "night mode" if night else "awake", why)
+            await hub.notify({"kind": "night" if night else "morning", "session": ""})
+
+    async def apply_voice_command(text: str) -> None:
+        command = voice_command(text)
+        if command == "night":
+            await set_night(True, "voice")
+        elif hub.night:  # "bom dia", or simply talking to it again
+            await set_night(False, "voice")
 
     async def housekeeping() -> None:
         host = socket.gethostname()
@@ -178,6 +194,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         log.info("transcribed %.1fs of audio in %.1fs on %s",
                  result["audio_seconds"], result["took_seconds"], result.get("backend"))
         hub.note_voice_text(result.get("text", ""))
+        await apply_voice_command(result.get("text", ""))
         return result
 
     @app.get("/api/speech/{clip_id}")
@@ -203,6 +220,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 kind = msg.get("type")
                 if kind != "ping":  # a touch, a decision, a dictation: this is the Buddy in use
                     last_active[ws] = time.time()
+                    if kind == "touch" and hub.night:
+                        await set_night(False, "touch")
                 if kind == "decision":
                     ok = hub.decide(msg.get("id", ""), msg.get("behavior", ""), msg.get("via", "touch"))
                     await ws.send_text(json.dumps({"type": "decision_result", "id": msg.get("id"), "ok": ok}))

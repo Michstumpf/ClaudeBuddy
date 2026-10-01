@@ -252,8 +252,9 @@ function onMessage(msg) {
     if (msg.event) {
       lastEvent = msg.event; lastEventAt = Date.now(); donePast = pick(PAST);
       log(`evento: ${msg.event.kind} (${msg.event.session})`);
-      if (msg.event.kind === "done") beep([880, 1320]);
-      if (msg.event.kind === "attention" || msg.event.kind === "approval") beep([660, 660]);
+      if (!msg.night && msg.event.kind === "done") beep([880, 1320]);
+      if (!msg.night && (msg.event.kind === "attention" || msg.event.kind === "approval")) beep([660, 660]);
+      if (msg.event.kind === "morning") beep([523, 659, 784]);
     }
     if (state.pending.length && view !== "dictate") show("approve");
     else if (!state.pending.length && view === "approve") show("face");
@@ -276,6 +277,7 @@ function mood() {
   if (!connected) return ["s-off", "sem conexão com o hub"];
   if (listening) return ["s-listen", "ouvindo…"];
   if (talking) return ["s-talk", `🔊 ${talking}`];
+  if (state.night && !state.pending.length) return ["s-sleep", "boa noite 🌙"];
   const ss = state.sessions.filter(s => s.status !== "offline");
   if (ss.some(s => s.status === "waiting")) return ["s-wait", "alguém precisa de você!"];
   if (lastEvent && lastEvent.kind === "done" && Date.now() - lastEventAt < 8000) return ["s-done", doneLabel(lastEvent)];

@@ -36,6 +36,25 @@ def _norm(text: str) -> str:
     return re.sub(r"[\W_]+", " ", (text or "").lower()).strip()
 
 
+# Short voice phrases that put the Buddy to sleep or wake it up. Only short
+# utterances count, so "boa noite" inside a long dictation does not trigger.
+NIGHT_WORDS = ("boa noite", "vou dormir", "encerrando por hoje", "good night")
+MORNING_WORDS = ("bom dia", "acorda", "good morning")
+COMMAND_MAX_WORDS = 12
+
+
+def voice_command(text: str) -> str | None:
+    """'night', 'morning' or None for a transcribed utterance."""
+    words = _norm(text)
+    if not words or len(words.split()) > COMMAND_MAX_WORDS:
+        return None
+    if any(w in words for w in NIGHT_WORDS):
+        return "night"
+    if any(w in words for w in MORNING_WORDS):
+        return "morning"
+    return None
+
+
 def summarize_tool(tool_name: str, tool_input: dict) -> str:
     if tool_name == "Bash":
         return str(tool_input.get("command", ""))[:200]
@@ -98,6 +117,11 @@ class Hub:
         self._listeners: list = []  # async callables(snapshot, event)
         self._local_ids: set[str] = set()  # sessions seen in the local registry
         self._voice_texts: list[tuple[str, float]] = []  # recent transcriptions
+        # Question of each voice turn, for the spoken summary. Kept out of the
+        # snapshot on purpose: the Buddy never gets prompt text.
+        self.voice_questions: dict[str, str] = {}
+        # Night mode ("boa noite"): sleeping face, no beeps, no speech.
+        self.night = False
         # async fn(session, full_answer), set by the app to speak voice replies
         self.on_voice_reply = None
 
@@ -109,6 +133,7 @@ class Hub:
             "sessions": [asdict(s) for s in sorted(self.sessions.values(), key=lambda s: -s.updated_at)],
             "pending": [a.public() for a in self.approvals.values()],
             "devices": len(self.devices),
+            "night": self.night,
         }
 
     def add_listener(self, fn) -> None:
@@ -152,6 +177,7 @@ class Hub:
             session.voice_turn = self._take_voice_text(payload.get("prompt", ""))
             if session.voice_turn:  # never log prompt text: Portrait sessions report here too
                 log.info("voice turn in %s", session.name)
+                self.voice_questions[session.id] = payload.get("prompt", "")
         elif event == "PostToolUse":
             if session.status == "waiting":
                 session.status = "working"

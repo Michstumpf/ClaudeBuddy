@@ -3,6 +3,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hub"))
@@ -145,3 +146,36 @@ def test_only_the_most_recently_used_buddy_speaks(monkeypatch):
                                any(x["status"] == "offline" for x in seen[-1]["sessions"])):
             seen.append(second.receive_json())
         assert "speech" not in [m["type"] for m in seen]
+
+
+# ---- night mode -------------------------------------------------------------
+
+from buddy_hub.state import voice_command  # noqa: E402
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Boa noite!", "night"),
+    ("Boa noite, Claude, estou encerrando por hoje.", "night"),
+    ("Bom dia!", "morning"),
+    ("roda os testes", None),
+    ("Eu queria registrar no ticket que a reunião de ontem foi até tarde e terminou com boa noite a todos", None),
+])
+def test_voice_command(text, expected):
+    assert voice_command(text) == expected
+
+
+def test_night_mode_silences_and_touch_wakes(monkeypatch):
+    monkeypatch.setattr(app_module, "Speaker", FakeSpeaker)
+    monkeypatch.setattr(app_module.Transcriber, "available", staticmethod(lambda: True))
+    app = create_app(Settings(token=TOKEN, dictation_backend="dry-run"))
+    texts = iter(["Boa noite!"])
+    monkeypatch.setattr(app_module.Transcriber, "transcribe",
+                        lambda self, audio: {"text": next(texts), "audio_seconds": 1, "took_seconds": 0.1})
+    with TestClient(app) as c, c.websocket_connect(f"/ws?token={TOKEN}") as ws:
+        ws.receive_json()
+        c.post("/api/transcribe", content=b"RIFF", headers=H)
+        night = next(m for m in (ws.receive_json() for _ in range(5)) if (m.get("event") or {}).get("kind") == "night")
+        assert night["night"] is True
+        ws.send_json({"type": "touch"})
+        morning = next(m for m in (ws.receive_json() for _ in range(5)) if (m.get("event") or {}).get("kind") == "morning")
+        assert morning["night"] is False

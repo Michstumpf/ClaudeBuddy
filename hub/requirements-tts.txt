@@ -1,2 +1,4 @@
 # Optional: spoken replies on the hub (Piper, local text-to-speech)
 piper-tts>=1.3
+# Optional: spoken summaries written by Claude Haiku (key in ~/.config/claude-buddy/anthropic_key)
+anthropic>=1
