@@ -21,6 +21,16 @@ WOKWI_CLI_TOKEN=$(cat ~/.config/claude-buddy/wokwi_token) python3 tools/screens.
 
 `screens.py` roda **uma** simulação (poupa os minutos do plano gratuito do Wokwi): manda pela serial as mesmas mensagens JSON que o hub manda (com acentos escapados, como o Python faz) e tira uma captura da tela depois de cada uma.
 
+## Ver ao vivo, ligado ao hub de verdade
+
+1. Instale a extensão **Wokwi Simulator** no VS Code (login com a conta do Wokwi) e abra a pasta `firmware/`.
+2. `pio run -e wokwi_s3`, depois **F1 → "Wokwi: Start Simulator"**: a tela simulada aparece e responde ao mouse como touch.
+3. Num terminal: `../.venv/bin/python tools/hub_bridge.py`. A ponte entra no hub como um Buddy e liga a serial simulada (exposta em `localhost:4000` pelo `rfc2217ServerPort` do `wokwi.toml`) ao WebSocket do hub: o Buddy simulado mostra as sessões reais, o clima e as piadas, e os toques na tela voltam ao hub.
+
+Sem VS Code também dá: `wokwi-cli . --timeout 60000` + a ponte, mas aí só há capturas (`--screenshot-time`), não a tela ao vivo.
+
+A ponte existe até o firmware ter WiFi + WebSocket próprios.
+
 ## O que o Wokwi não cobre (fica para a placa real)
 
 - Áudio (microfone I2S, alto-falante).
