@@ -1,0 +1,2 @@
+# Optional: spoken replies on the hub (Piper, local text-to-speech)
+piper-tts>=1.3

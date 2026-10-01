@@ -43,6 +43,10 @@ class Settings:
     stt_beam_size: int = 1
     # GPU worker (buddy_hub.worker on the desktop), tried before the local CPU.
     stt_remote: str | None = None
+    # Spoken replies to voice turns (Piper). speak_on: auto = on the Buddy /
+    # simulator if one is connected, else the hub's speakers; local; devices; off.
+    tts_voice: str = "pt_BR-faber-medium"
+    speak_on: str = "auto"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -56,6 +60,8 @@ class Settings:
             stt_language=os.environ.get("BUDDY_STT_LANGUAGE", "pt") or None,
             stt_beam_size=int(os.environ.get("BUDDY_STT_BEAM_SIZE", "1")),
             stt_remote=os.environ.get("BUDDY_STT_REMOTE") or None,
+            tts_voice=os.environ.get("BUDDY_TTS_VOICE", "pt_BR-faber-medium"),
+            speak_on=os.environ.get("BUDDY_SPEAK_ON", "auto"),
         )
 
 

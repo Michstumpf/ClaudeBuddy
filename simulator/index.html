@@ -71,6 +71,11 @@
   .s-listen .fx-wave rect { fill: var(--info); animation: wave .7s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
   .s-listen .fx-wave rect:nth-child(2n) { animation-delay: .35s; }
 
+  .s-talk .sprite { animation: bob .35s steps(1) infinite; }
+  .s-talk .fx-wave { opacity: 1; }
+  .s-talk .fx-wave rect { fill: var(--accent); animation: wave .25s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+  .s-talk .fx-wave rect:nth-child(2n) { animation-delay: .12s; }
+
   .s-off .body rect, .s-off .legs rect { fill: #5a5550; }
   .s-off .sprite { transform: translateY(1px); }
 
@@ -253,6 +258,8 @@ function onMessage(msg) {
     if (state.pending.length && view !== "dictate") show("approve");
     else if (!state.pending.length && view === "approve") show("face");
     render();
+  } else if (msg.type === "speech") {
+    speak(msg);
   } else if (msg.type === "dictate_result") {
     log(`ditado → ${msg.session || "?"}: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
     $("dText").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
@@ -268,6 +275,7 @@ function show(v) { view = v; document.querySelectorAll(".view").forEach(el => el
 function mood() {
   if (!connected) return ["s-off", "sem conexão com o hub"];
   if (listening) return ["s-listen", "ouvindo…"];
+  if (talking) return ["s-talk", `🔊 ${talking}`];
   const ss = state.sessions.filter(s => s.status !== "offline");
   if (ss.some(s => s.status === "waiting")) return ["s-wait", "alguém precisa de você!"];
   if (lastEvent && lastEvent.kind === "done" && Date.now() - lastEventAt < 8000) return ["s-done", doneLabel(lastEvent)];
@@ -369,6 +377,24 @@ $("dHold").addEventListener("pointerdown", startListen);
 $("dHold").addEventListener("pointerup", stopListen);
 $("dHold").addEventListener("pointerleave", stopListen);
 
+// ---------- spoken replies (voice turns) ----------
+let talking = null;  // text being spoken
+const speechQueue = [];
+function speak(msg) {
+  log(`🔊 ${msg.session}: ${msg.text}`);
+  speechQueue.push(msg);
+  if (!talking) playNext();
+}
+function playNext() {
+  const msg = speechQueue.shift();
+  if (!msg) { talking = null; render(); return; }
+  talking = msg.text; show("face");
+  const audio = new Audio(`${msg.url}?token=${encodeURIComponent(token)}`);
+  audio.onended = audio.onerror = () => playNext();
+  audio.play().catch(err => { log("áudio bloqueado pelo navegador: clique na página uma vez"); playNext(); });
+  render();
+}
+
 // ---------- sound ----------
 let audio = null;
 function beep(freqs) {
@@ -407,7 +433,7 @@ const EYES = {
   dead:  [[4, 1, 1, 1], [6, 1, 1, 1], [5, 2, 1, 1], [4, 3, 1, 1], [6, 3, 1, 1],
           [11, 1, 1, 1], [13, 1, 1, 1], [12, 2, 1, 1], [11, 3, 1, 1], [13, 3, 1, 1]],
 };
-const EYES_FOR = { "s-idle": "open", "s-work": "open", "s-listen": "open", "s-wait": "wide",
+const EYES_FOR = { "s-talk": "open", "s-idle": "open", "s-work": "open", "s-listen": "open", "s-wait": "wide",
                    "s-done": "happy", "s-sleep": "sleep", "s-off": "dead" };
 const SVG_NS = "http://www.w3.org/2000/svg";
 function rects(el, list) {

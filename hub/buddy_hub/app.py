@@ -4,6 +4,7 @@
 - WS   /ws          the Buddy device (or the browser simulator)
 - POST /api/dictate send dictated text to a session (e.g. from a hotkey client)
 - POST /api/transcribe  audio in (body) -> text out, with faster-whisper
+- GET  /api/speech/{id} a spoken reply (WAV) announced to devices as {"type":"speech"}
 - GET  /api/state   current snapshot
 - GET  /            the Buddy simulator
 """
@@ -12,18 +13,24 @@ import asyncio
 import hmac
 import json
 import logging
+import shutil
 import socket
+import subprocess
+import tempfile
+import uuid
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from .config import Settings
 from .dictation import make_sender
 from .local_sessions import read_local_sessions
 from .state import Hub
 from .stt import RemoteFirst, Transcriber
+from .tts import Speaker, speakable
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
@@ -36,6 +43,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     transcriber = Transcriber(settings.stt_model, settings.stt_language, beam_size=settings.stt_beam_size)
     if settings.stt_remote:
         transcriber = RemoteFirst(settings.stt_remote, settings.token, local=transcriber)
+    speaker = Speaker(settings.tts_voice)
+    clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
+
+    def play_locally(wav: bytes) -> None:
+        if not shutil.which("pw-play"):
+            log.warning("pw-play not found; cannot speak on the hub")
+            return
+        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+            f.write(wav)
+            f.flush()
+            subprocess.run(["pw-play", f.name], timeout=120, check=False)
+
+    async def speak_reply(session, answer: str) -> None:
+        target = settings.speak_on
+        if target == "off" or not speaker.available():
+            return
+        text = speakable(answer)
+        if not text:
+            return
+        try:
+            wav = await asyncio.to_thread(speaker.synthesize, text)
+        except Exception:
+            log.exception("speech synthesis failed")
+            return
+        if target == "auto":
+            target = "devices" if hub.devices else "local"
+        log.info("speaking reply of %s on %s (%d chars)", session.name, target, len(text))
+        if target == "local":
+            await asyncio.to_thread(play_locally, wav)
+            return
+        clip_id = uuid.uuid4().hex[:12]
+        clips[clip_id] = wav
+        while len(clips) > 10:
+            clips.popitem(last=False)
+        message = json.dumps({"type": "speech", "id": clip_id, "session": session.name,
+                              "text": text, "url": f"/api/speech/{clip_id}"})
+        for ws in list(hub.devices):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                hub.devices.discard(ws)
+
+    hub.on_voice_reply = speak_reply
 
     async def housekeeping() -> None:
         host = socket.gethostname()
@@ -80,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session = hub.sessions.get(session_id or "")
         if session is None:
             return {"ok": False, "detail": "unknown session"}
+        hub.note_voice_text(text)  # its answer gets spoken back
         ok, detail = sender.send(session.tmux_pane, text)
         return {"ok": ok, "detail": detail, "backend": sender.name, "session": session.name}
 
@@ -120,7 +171,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc))
         log.info("transcribed %.1fs of audio in %.1fs on %s",
                  result["audio_seconds"], result["took_seconds"], result.get("backend"))
+        hub.note_voice_text(result.get("text", ""))
         return result
+
+    @app.get("/api/speech/{clip_id}")
+    async def speech(clip_id: str, token: str | None = Query(None), x_buddy_token: str | None = Header(None)):
+        check(x_buddy_token or token)  # query token: an <audio> element can't send headers
+        wav = clips.get(clip_id)
+        if wav is None:
+            raise HTTPException(status_code=404, detail="unknown or expired clip")
+        return Response(wav, media_type="audio/wav")
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket, token: str | None = Query(None)):

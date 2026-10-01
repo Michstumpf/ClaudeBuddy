@@ -1,6 +1,7 @@
 """In-memory model of Claude Code sessions and pending approvals."""
 
 import asyncio
+import logging
 import re
 import time
 import uuid
@@ -25,7 +26,14 @@ DANGEROUS_PATTERNS = [
 ]
 _DANGEROUS_RE = re.compile("|".join(DANGEROUS_PATTERNS), re.IGNORECASE)
 
+log = logging.getLogger("buddy.state")
+
 LAST_MESSAGE_MAX = 280
+VOICE_MATCH_WINDOW = 60.0  # seconds between a transcription and its prompt
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[\W_]+", " ", (text or "").lower()).strip()
 
 
 def summarize_tool(tool_name: str, tool_input: dict) -> str:
@@ -61,6 +69,8 @@ class Session:
     # Name given with /rename, from the local session registry. Wins over the
     # tmux session / folder name.
     title: str | None = None
+    # The current turn was asked by voice, so its answer gets spoken back.
+    voice_turn: bool = False
 
 
 @dataclass
@@ -87,6 +97,9 @@ class Hub:
         self.devices: set = set()  # connected websockets
         self._listeners: list = []  # async callables(snapshot, event)
         self._local_ids: set[str] = set()  # sessions seen in the local registry
+        self._voice_texts: list[tuple[str, float]] = []  # recent transcriptions
+        # async fn(session, full_answer), set by the app to speak voice replies
+        self.on_voice_reply = None
 
     # ---- snapshot / broadcast -------------------------------------------------
 
@@ -136,6 +149,9 @@ class Hub:
             session.status = "idle"
         elif event == "UserPromptSubmit":
             session.status = "working"
+            session.voice_turn = self._take_voice_text(payload.get("prompt", ""))
+            if session.voice_turn:  # never log prompt text: Portrait sessions report here too
+                log.info("voice turn in %s", session.name)
         elif event == "PostToolUse":
             if session.status == "waiting":
                 session.status = "working"
@@ -152,6 +168,9 @@ class Hub:
             if msg:
                 session.last_message = msg[:LAST_MESSAGE_MAX]
             ui_event = {"kind": "done", "session": session.name}
+            if session.voice_turn and msg and self.on_voice_reply:
+                asyncio.get_running_loop().create_task(self.on_voice_reply(session, msg))
+            session.voice_turn = False
         elif event == "SessionEnd":
             session.status = "offline"
         elif event == "PermissionRequest":
@@ -161,6 +180,24 @@ class Hub:
 
         await self.notify(ui_event)
         return response
+
+    # ---- voice turns ------------------------------------------------------------
+
+    def note_voice_text(self, text: str) -> None:
+        """Remember a transcription; the prompt that carries it marks a voice turn."""
+        now = time.time()
+        self._voice_texts = [(t, at) for t, at in self._voice_texts if now - at < VOICE_MATCH_WINDOW]
+        if _norm(text):
+            self._voice_texts.append((_norm(text), now))
+
+    def _take_voice_text(self, prompt: str) -> bool:
+        prompt, now = _norm(prompt), time.time()
+        for i, (text, at) in enumerate(self._voice_texts):
+            # The user may add a few typed words after the dictated part.
+            if now - at < VOICE_MATCH_WINDOW and prompt and (prompt == text or prompt.startswith(text)):
+                del self._voice_texts[i]
+                return True
+        return False
 
     # ---- local session registry ----------------------------------------------
 

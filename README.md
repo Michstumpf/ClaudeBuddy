@@ -72,6 +72,21 @@ journalctl --user -u claude-buddy-ptt -f
 - O modelo carrega na primeira transcrição (~600 MB de RAM no hub) e fica em memória.
 - Apertar por menos de 0,4 s conta como toque; frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org") são descartadas.
 
+## Resposta falada
+
+Quando uma pergunta é **feita por voz** (F9 ou ditado pelo Buddy), o hub fala a resposta da sessão quando ela termina. Perguntas digitadas continuam em silêncio, então as outras sessões não viram narração.
+
+- **Como o hub sabe:** guarda o texto de cada transcrição por 60 s; o `UserPromptSubmit` que chega com esse texto (ou começando por ele) marca a sessão, e o `Stop` dela é falado.
+- **O que é falado:** as primeiras 1-3 frases da resposta (até ~320 caracteres), sem código, tabelas, links, emojis ou markdown (`speakable()` em `tts.py`).
+- **Voz:** Piper, local, ~0,15 s por frase. Vozes pt-BR: `faber` (padrão), `cadu`, `jeff` (`BUDDY_TTS_VOICE`).
+- **Onde toca** (`BUDDY_SPEAK_ON`): `auto` (padrão) toca no Buddy/simulador se houver um conectado, senão nas caixas do hub (`pw-play`); também `local`, `devices`, `off`. O Buddy recebe `{"type":"speech","id","session","text","url"}` e busca o WAV em `GET /api/speech/<id>?token=…`.
+
+```bash
+uv pip install --python .venv/bin/python -r hub/requirements-tts.txt
+mkdir -p ~/.local/share/claude-buddy/voices && cd ~/.local/share/claude-buddy/voices
+~/personal/ClaudeBuddy/.venv/bin/python -m piper.download_voices pt_BR-faber-medium
+```
+
 ## Transcrição na GPU do desktop (opcional)
 
 O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU ocupada (≥ 60% de uso ou menos de 2,5 GB de VRAM livre, por exemplo num jogo) ou falhar. O modelo local só carrega quando o fallback acontece.
@@ -127,6 +142,8 @@ Buddy → hub:
 - `{"type":"dictate","session_id":"…","text":"…"}`
 - `{"type":"ping"}`
 
+Hub → Buddy também: `{"type":"speech","id":"…","session":"…","text":"…","url":"/api/speech/…"}` (resposta falada; o WAV pede `?token=`).
+
 O firmware do ESP32 vai falar exatamente esse protocolo; o simulador é a referência.
 
 ## Roadmap
@@ -137,4 +154,5 @@ O firmware do ESP32 vai falar exatamente esse protocolo; o simulador é a refer�
 - [x] Worker de STT na GPU do desktop + fallback para a CPU do hub
 - [ ] Firmware ESP32-C5 (LVGL + LovyanGFX), testado no Wokwi
 - [ ] Carcaça impressa (Bambu A1)
-- [ ] Agente falante (TTS)
+- [x] Resposta falada a perguntas por voz (Piper local)
+- [ ] Resumo falado com o Claude Haiku; voz mais natural na GPU (XTTS/Kokoro)
