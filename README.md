@@ -134,7 +134,7 @@ O firmware do ESP32 vai falar exatamente esse protocolo; o simulador é a refer�
 - [x] Fase 0–2: hub, hooks, aprovação, ditado via tmux, simulador
 - [ ] Atalho de ditado no notebook Windows → hub
 - [x] STT no hub (faster-whisper em CPU) + segurar F9 no Ubuntu
-- [x] Worker de STT na GPU do desktop + fallback para a CPU do hub (código; falta instalar no desktop)
+- [x] Worker de STT na GPU do desktop + fallback para a CPU do hub
 - [ ] Firmware ESP32-C5 (LVGL + LovyanGFX), testado no Wokwi
 - [ ] Carcaça impressa (Bambu A1)
 - [ ] Agente falante (TTS)

@@ -22,7 +22,7 @@ Confirmar quando chegar: controlador da tela (ILI9341/ST7789), tipo de touch, PS
 | Notebook Windows | Unidade móvel (sofá). Remote Control, Jira, Git. Futuro atalho de ditado → hub. |
 | Desktop Windows RTX 3070 Ti | Jogos; opcional como servidor de STT na GPU (faster-whisper large-v3-turbo), com fallback para CPU no Ubuntu. |
 
-Rede entre elas: Tailscale (planejado). Áudio/transcrição nunca saem de casa; contexto da Portrait não sai do Ubuntu.
+Rede entre elas: Tailscale na **conta pessoal** (`michstumpf@gmail.com`; o Ubuntu chegou a entrar na tailnet `portraitspa.com` por engano e foi trocado). Nomes: `dell` (Ubuntu), `desktop-pc01` (desktop). Áudio/transcrição nunca saem de casa; contexto da Portrait não sai do Ubuntu.
 
 ## Decisões de arquitetura
 
@@ -58,6 +58,7 @@ Aprendizados da validação:
 - Esc no meio de uma resposta não dispara `Stop`; negar no terminal não dispara `PostToolUse`. O registro local cobre os dois.
 - Sessões já abertas recarregam os hooks quando o `settings.json` muda.
 - O modo padrão do Claude Code agora é auto mode; aprovação pelo Buddy só faz sentido em manual mode.
+- Instalador do Windows: o Windows PowerShell 5.1 transforma qualquer linha de stderr de um programa nativo em erro fatal com `ErrorActionPreference=Stop` (por isso o `Invoke-Native`); o Ctrl+V nem sempre funciona no `Read-Host`, use o botão direito.
 - O backend de ditado é escolhido quando o hub sobe: instalar o tmux depois exige reiniciar o hub.
 - No Ubuntu o hub roda como serviço systemd de usuário (`deploy/systemd/`); logs em `journalctl --user -u claude-buddy-hub -f`.
 
@@ -65,7 +66,7 @@ Aprendizados da validação:
 
 1. ~~No Ubuntu: validar hub + hooks + tmux com uma sessão real~~ (feito em 2026-10-01; clone em `~/personal/ClaudeBuddy`).
 2. Atalho de ditado no notebook Windows (segurar tecla → mic → STT → `POST /api/dictate` no hub via Tailscale).
-3. STT na GPU do desktop: **código pronto** (`hub/buddy_hub/worker.py`, `RemoteFirst` em `stt.py`, `deploy/windows/install-worker.ps1`), testado no Ubuntu com um worker em CPU fazendo o papel do desktop (remoto e fallback). **Falta:** Tailscale nas duas máquinas, rodar o `install-worker.ps1` no desktop e configurar `BUDDY_STT_REMOTE` no hub (README, seção "Transcrição na GPU do desktop").
+3. ~~STT na GPU do desktop~~ (instalado em 2026-10-01): worker `large-v3-turbo` em CUDA no `desktop-pc01` (RTX 3070 Ti, ~2 GB de VRAM), tarefa agendada no login, firewall só para o Tailscale; hub com `BUDDY_STT_REMOTE=http://desktop-pc01:8766` em `~/.config/systemd/user/claude-buddy-hub.service.d/override.conf`. Com o desktop ligado, o hub fica em ~50 MB de RAM (o modelo local só carrega no fallback).
 4. Firmware ESP32-C5: ESP-IDF 5.5+ ou Arduino core 3.3+, LVGL + LovyanGFX, mesmo protocolo do simulador; testar no Wokwi (extensão do VS Code para alcançar o hub local).
 5. Carcaça na Bambu A1 (estilo TV retrô com antena + LED; OpenSCAD paramétrico; mic na frente, speaker em câmara separada; PLA/PETG; sem logo da Anthropic se publicar).
 6. Agente falante.
