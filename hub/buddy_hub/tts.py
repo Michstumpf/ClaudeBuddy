@@ -144,3 +144,37 @@ class RemoteFirstSpeaker:
         if not self.local.available():
             raise RuntimeError(f"gpu worker {why} and Piper is not installed on the hub")
         return self.local.synthesize(text)
+
+
+LOUDNESS_TARGET_DBFS = -14.0  # louder than raw TTS (~-19 dBFS); laptop speakers lose the lows
+_KNEE = 0.89  # above this the limiter bends the waveform instead of clipping
+
+
+def louder(wav: bytes, target_dbfs: float = LOUDNESS_TARGET_DBFS) -> bytes:
+    """Bring a 16-bit mono/stereo WAV to target_dbfs RMS with a soft limiter.
+
+    XTTS and Piper come out around -19 dBFS; a deep voice at that level was
+    barely audible on the Ubuntu speakers.
+    """
+    import numpy as np
+
+    try:
+        with wave.open(io.BytesIO(wav), "rb") as src:
+            params = src.getparams()
+            frames = src.readframes(src.getnframes())
+    except (wave.Error, EOFError):  # not a plain PCM WAV: play it as it is
+        return wav
+    if params.sampwidth != 2 or not frames:
+        return wav
+    x = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+    rms = float(np.sqrt(np.mean(x * x)))
+    if rms < 1e-5:  # silence
+        return wav
+    y = x * (10 ** (target_dbfs / 20) / rms)
+    over = np.abs(y) > _KNEE
+    y[over] = np.sign(y[over]) * (_KNEE + (1 - _KNEE) * np.tanh((np.abs(y[over]) - _KNEE) / (1 - _KNEE)))
+    out = io.BytesIO()
+    with wave.open(out, "wb") as dst:
+        dst.setparams(params)
+        dst.writeframes((np.clip(y, -1.0, 1.0) * 32767).astype("<i2").tobytes())
+    return out.getvalue()

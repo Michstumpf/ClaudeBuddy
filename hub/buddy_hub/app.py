@@ -32,7 +32,7 @@ from .local_sessions import read_local_sessions
 from .state import Hub, voice_command
 from .stt import RemoteFirst, Transcriber
 from .summarizer import Summarizer, load_key, usage_summary
-from .tts import RemoteFirstSpeaker, Speaker, speakable
+from .tts import RemoteFirstSpeaker, Speaker, louder, speakable
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
@@ -74,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         try:
             wav = await asyncio.to_thread(speaker.synthesize, text)
+            wav = await asyncio.to_thread(louder, wav)
         except Exception:
             log.exception("speech synthesis failed")
             return

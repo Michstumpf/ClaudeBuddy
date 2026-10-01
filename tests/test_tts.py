@@ -179,3 +179,37 @@ def test_night_mode_silences_and_touch_wakes(monkeypatch):
         ws.send_json({"type": "touch"})
         morning = next(m for m in (ws.receive_json() for _ in range(5)) if (m.get("event") or {}).get("kind") == "morning")
         assert morning["night"] is False
+
+
+def test_louder_raises_quiet_speech_without_clipping():
+    import io
+    import wave
+
+    import numpy as np
+
+    from buddy_hub.tts import louder
+
+    def wav_of(samples):
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000)
+            w.writeframes((samples * 32767).astype("<i2").tobytes())
+        return buf.getvalue()
+
+    def level(b):
+        with wave.open(io.BytesIO(b)) as w:
+            x = np.frombuffer(w.readframes(w.getnframes()), "<i2") / 32768
+        return 20 * np.log10(np.sqrt((x * x).mean())), np.abs(x).max()
+
+    t = np.arange(16000) / 16000
+    quiet = 0.08 * np.sin(2 * np.pi * 220 * t)  # about -25 dBFS
+    rms, peak = level(louder(wav_of(quiet)))
+    assert -15 < rms < -13 and peak <= 1.0
+    silence = wav_of(np.zeros(1600))
+    assert louder(silence) == silence
+
+
+def test_louder_leaves_non_wav_audio_alone():
+    from buddy_hub.tts import louder
+
+    assert louder(b"not a wav") == b"not a wav"
