@@ -255,3 +255,14 @@ def test_app_polls_registry(tmp_path):
                 break
             time.sleep(0.05)
     assert [(s["id"], s["name"], s["status"]) for s in sessions] == [("reg", "y", "working")]
+
+
+def test_stale_hook_only_session_goes_idle():
+    """E.g. the simulator's fake 'working' event, which never gets a Stop."""
+    hub = Hub()
+    asyncio.run(hub.handle_hook(payload("UserPromptSubmit", sid="fake")))
+    hub.reconcile([entry("local", status="busy")], "ubuntu")
+    assert not hub.expire_stale(600, now=time.time() + 60)
+    assert hub.expire_stale(600, now=time.time() + 700)
+    assert hub.sessions["fake"].status == "idle"
+    assert hub.sessions["local"].status == "working"  # the registry owns local sessions

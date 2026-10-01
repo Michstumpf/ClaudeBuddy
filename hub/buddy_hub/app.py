@@ -32,23 +32,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     hub = Hub(approval_timeout=settings.approval_timeout)
     sender = make_sender(settings.dictation_backend)
 
-    async def watch_local_sessions() -> None:
+    async def housekeeping() -> None:
         host = socket.gethostname()
         while True:
             try:
-                entries = await asyncio.to_thread(read_local_sessions, settings.sessions_dir)
-                if hub.reconcile(entries, host):
+                changed = False
+                if settings.sessions_dir:
+                    entries = await asyncio.to_thread(read_local_sessions, settings.sessions_dir)
+                    changed = hub.reconcile(entries, host)
+                changed = hub.expire_stale(settings.stale_working) or changed
+                if changed:
                     await hub.notify(None)
             except Exception:
-                log.exception("reading %s failed", settings.sessions_dir)
+                log.exception("housekeeping failed")
             await asyncio.sleep(settings.sessions_poll)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        task = asyncio.create_task(watch_local_sessions()) if settings.sessions_dir else None
+        task = asyncio.create_task(housekeeping())
         yield
-        if task:
-            task.cancel()
+        task.cancel()
 
     app = FastAPI(title="Claude Buddy hub", lifespan=lifespan)
     app.state.hub = hub

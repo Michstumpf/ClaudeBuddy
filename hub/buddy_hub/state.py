@@ -215,6 +215,18 @@ class Hub:
                 self.sessions[sid].status = "offline"
         return self.snapshot() != before
 
+    def expire_stale(self, max_age: float, now: float | None = None) -> bool:
+        """Hook-only sessions (other machines, the simulator's fake events) have no
+        registry to correct them: if one says 'working' but sent nothing for
+        max_age seconds, its Stop was lost, so treat it as idle."""
+        now = now or time.time()
+        changed = False
+        for sid, session in self.sessions.items():
+            if session.status == "working" and sid not in self._local_ids and now - session.updated_at > max_age:
+                session.status = "idle"
+                changed = True
+        return changed
+
     # ---- approvals ------------------------------------------------------------
 
     async def request_approval(self, session: Session, payload: dict) -> str | None:

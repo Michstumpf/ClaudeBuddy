@@ -46,6 +46,8 @@ O hub também lê `~/.claude/sessions/<pid>.json`, que o Claude Code mantém par
 - diálogos de permissão abertos no terminal aparecem como `waiting`;
 - processos que morreram sem `SessionEnd` viram `offline`.
 
+Sessões que só chegam por hook (outras máquinas, eventos falsos do simulador) não têm esse registro: se ficarem `working` por 10 min sem nenhum evento (`BUDDY_STALE_WORKING`), voltam para `idle`.
+
 O arquivo só vence quando é mais novo que o último hook, então nunca desfaz um evento que acabou de chegar. Só vale para sessões na mesma máquina do hub.
 
 ## Comportamento das aprovações

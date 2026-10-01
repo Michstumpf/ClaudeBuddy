@@ -35,6 +35,8 @@ class Settings:
     # or a hub running on a different machine than the sessions).
     sessions_dir: Path | None = None
     sessions_poll: float = 3.0
+    # A hook-only session stuck in 'working' this long without events goes idle.
+    stale_working: float = 600.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -43,6 +45,7 @@ class Settings:
             approval_timeout=float(os.environ.get("BUDDY_APPROVAL_TIMEOUT", "20")),
             dictation_backend=os.environ.get("BUDDY_DICTATION", "auto"),
             sessions_dir=_sessions_dir(),
+            stale_working=float(os.environ.get("BUDDY_STALE_WORKING", "600")),
         )
 
 
