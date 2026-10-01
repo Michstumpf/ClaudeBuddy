@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import re
+import signal
 import statistics
 import subprocess
 import threading
@@ -40,12 +41,18 @@ HUB = os.environ.get("BUDDY_HUB", "http://127.0.0.1:8765").rstrip("/")
 KEY = getattr(keyboard.Key, os.environ.get("BUDDY_PTT_KEY", "f9").lower())
 PRESS_ENTER = os.environ.get("BUDDY_PTT_ENTER", "1") == "1"
 TAP_SECONDS = 0.4  # a shorter press is a tap: switch to hands-free mode
+# Keep recording a little after the key is released: people let go while
+# still saying the last word, and the mic pipeline lags a bit.
+RELEASE_TAIL = 0.5
 RATE = 16000
 CHUNK = RATE // 10  # 100 ms of 16-bit mono samples
 SILENCE_END = float(os.environ.get("BUDDY_PTT_SILENCE", "1.5"))
 NO_SPEECH_GIVE_UP = 8.0  # hands-free take with no speech at all: cancel
 MAX_SECONDS = 120.0
-SPEECH_RMS_MIN = 400  # 16-bit RMS; the noise floor raises it in noisy rooms
+# 16-bit RMS. Measured on a HyperX headset: silence ~5, normal speech peaks
+# ~250. The noise floor raises the threshold in noisy rooms.
+SPEECH_RMS_MIN = 60
+NOISE_FACTOR = 4
 # X11 auto-repeat turns a held key into release+press pairs; a release only
 # counts if no press follows within this window.
 REPEAT_GRACE = 0.08
@@ -62,18 +69,36 @@ def token() -> str:
 
 
 class Notifier:
-    """One desktop notification that is updated in place (notify-send -r)."""
+    """One desktop notification that is updated in place (notify-send -r).
+
+    notify-send can take seconds to return, so it runs on its own thread and
+    never delays key handling; only the latest message is shown.
+    """
 
     def __init__(self):
         self.id = "0"
+        self._latest: tuple | None = None
+        self._wake = threading.Condition()
+        threading.Thread(target=self._loop, daemon=True).start()
 
     def show(self, title: str, body: str = "", timeout_ms: int = 0) -> None:
-        cmd = ["notify-send", "-a", "Claude Buddy", "-p", "-r", self.id, "-t", str(timeout_ms), title, body]
-        try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
-            self.id = out.stdout.strip() or self.id
-        except (OSError, subprocess.SubprocessError):
-            pass
+        with self._wake:
+            self._latest = (title, body, timeout_ms)
+            self._wake.notify()
+
+    def _loop(self):
+        while True:
+            with self._wake:
+                while self._latest is None:
+                    self._wake.wait()
+                title, body, timeout_ms = self._latest
+                self._latest = None
+            cmd = ["notify-send", "-a", "Claude Buddy", "-p", "-r", self.id, "-t", str(timeout_ms), title, body]
+            try:
+                out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                self.id = out.stdout.strip() or self.id
+            except (OSError, subprocess.SubprocessError):
+                pass
 
 
 class Recording:
@@ -102,7 +127,7 @@ class Recording:
 
     def speech_threshold(self) -> float:
         floor = statistics.median(self.levels[:3]) if len(self.levels) >= 3 else 0.0
-        return max(SPEECH_RMS_MIN, floor * 3)
+        return max(SPEECH_RMS_MIN, floor * NOISE_FACTOR)
 
     def silence_state(self) -> tuple[bool, float]:
         """(any speech yet, seconds of silence since the last speech)."""
@@ -113,7 +138,7 @@ class Recording:
         return True, (len(self.levels) - 1 - loud[-1]) * 0.1
 
     def stop(self) -> bytes:
-        self.proc.terminate()
+        self.proc.send_signal(signal.SIGINT)  # pw-record flushes its buffer on SIGINT
         try:
             self.proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
@@ -134,6 +159,7 @@ class PushToTalk:
         self.typer = keyboard.Controller()
         self.rec: Recording | None = None
         self.hands_free = False
+        self.tailing = False  # released, still recording RELEASE_TAIL
         self.ignore_release = False
         self.pending_release: threading.Timer | None = None
         self.state_lock = threading.Lock()
@@ -145,6 +171,8 @@ class PushToTalk:
         if key != KEY:
             return
         with self.state_lock:
+            if self.tailing:
+                return
             if self.pending_release:  # X11 auto-repeat: the key is still held
                 self.pending_release.cancel()
                 self.pending_release = None
@@ -163,7 +191,7 @@ class PushToTalk:
             if self.ignore_release:
                 self.ignore_release = False
                 return
-            if self.rec is None or self.hands_free:
+            if self.rec is None or self.hands_free or self.tailing:
                 return
             self.pending_release = threading.Timer(REPEAT_GRACE, self._released)
             self.pending_release.start()
@@ -179,6 +207,13 @@ class PushToTalk:
                 log.info("hands-free")
                 threading.Thread(target=self._watch_silence, args=(self.rec,), daemon=True).start()
             else:
+                self.tailing = True
+                threading.Timer(RELEASE_TAIL, self._tail_done, args=(self.rec,)).start()
+
+    def _tail_done(self, rec: "Recording"):
+        with self.state_lock:
+            self.tailing = False
+            if self.rec is rec:
                 self._finish("release")
 
     # ---- recording ----------------------------------------------------------
@@ -210,7 +245,10 @@ class PushToTalk:
         if rec is None:
             return
         audio = rec.stop()
-        log.info("stopped (%s) after %.1fs", why, time.time() - rec.started)
+        levels = sorted(rec.levels) or [0.0]
+        log.info("stopped (%s) after %.1fs; level floor=%.0f p90=%.0f peak=%.0f threshold=%.0f",
+                 why, time.time() - rec.started, levels[len(levels) // 10], levels[len(levels) * 9 // 10],
+                 levels[-1], rec.speech_threshold())
         if cancel:
             self.notify.show("Claude Buddy", "não ouvi nada", 1500)
             return
