@@ -68,7 +68,7 @@ journalctl --user -u claude-buddy-ptt -f
 ```
 
 - O hub sobe sozinho no login (`claude-buddy-hub.service`); o PTT sobe com a sessão gráfica (`claude-buddy-ptt.service`). Os caminhos assumem o clone em `~/personal/ClaudeBuddy`.
-- Configuração: `BUDDY_PTT_KEY` (padrão `f9`), `BUDDY_PTT_ENTER=0` para só digitar sem Enter, `BUDDY_STT_MODEL` no hub (padrão `small`; `large-v3-turbo` acerta mais jargão, mas é bem mais lento em CPU), `BUDDY_STT_LANGUAGE` (padrão `pt`; vazio = detectar).
+- Configuração: `BUDDY_PTT_KEY` (padrão `f9`), `BUDDY_PTT_ENTER=0` para só digitar sem Enter, `BUDDY_STT_MODEL` no hub (padrão `small`; `large-v3-turbo` acerta mais jargão, mas é bem mais lento em CPU), `BUDDY_STT_LANGUAGE` (padrão `pt`; vazio = detectar), `BUDDY_STT_BEAM_SIZE` (padrão `1`, o mais rápido; `5` acerta um pouco mais, mas é 2-3× mais lento em CPU).
 - O modelo carrega na primeira transcrição (~600 MB de RAM no hub) e fica em memória.
 - Apertar por menos de 0,4 s conta como toque; frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org") são descartadas.
 

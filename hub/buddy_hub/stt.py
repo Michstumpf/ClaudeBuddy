@@ -22,8 +22,11 @@ INITIAL_PROMPT = (
 
 
 class Transcriber:
-    def __init__(self, model: str = "small", language: str | None = "pt", compute_type: str = "int8"):
+    def __init__(self, model: str = "small", language: str | None = "pt", compute_type: str = "int8",
+                 beam_size: int = 1):
         self.model_name = model
+        # 1 = greedy decoding: 2-3x faster than 5 on a busy CPU, slightly less accurate.
+        self.beam_size = beam_size
         self.language = language or None
         self.compute_type = compute_type
         self._model = None
@@ -56,7 +59,7 @@ class Transcriber:
                 language=self.language,
                 initial_prompt=INITIAL_PROMPT,
                 vad_filter=True,
-                beam_size=5,
+                beam_size=self.beam_size,
             )
             text = " ".join(s.text.strip() for s in segments).strip()
         return {

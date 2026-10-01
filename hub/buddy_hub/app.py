@@ -33,7 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     hub = Hub(approval_timeout=settings.approval_timeout)
     sender = make_sender(settings.dictation_backend)
-    transcriber = Transcriber(settings.stt_model, settings.stt_language)
+    transcriber = Transcriber(settings.stt_model, settings.stt_language, beam_size=settings.stt_beam_size)
 
     async def housekeeping() -> None:
         host = socket.gethostname()

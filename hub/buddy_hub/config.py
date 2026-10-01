@@ -40,6 +40,7 @@ class Settings:
     # Speech-to-text (faster-whisper on CPU). Language None = auto-detect.
     stt_model: str = "small"
     stt_language: str | None = "pt"
+    stt_beam_size: int = 1
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -51,6 +52,7 @@ class Settings:
             stale_working=float(os.environ.get("BUDDY_STALE_WORKING", "600")),
             stt_model=os.environ.get("BUDDY_STT_MODEL", "small"),
             stt_language=os.environ.get("BUDDY_STT_LANGUAGE", "pt") or None,
+            stt_beam_size=int(os.environ.get("BUDDY_STT_BEAM_SIZE", "1")),
         )
 
 
