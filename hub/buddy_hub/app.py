@@ -23,7 +23,7 @@ from .config import Settings
 from .dictation import make_sender
 from .local_sessions import read_local_sessions
 from .state import Hub
-from .stt import Transcriber
+from .stt import RemoteFirst, Transcriber
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
@@ -34,6 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     hub = Hub(approval_timeout=settings.approval_timeout)
     sender = make_sender(settings.dictation_backend)
     transcriber = Transcriber(settings.stt_model, settings.stt_language, beam_size=settings.stt_beam_size)
+    if settings.stt_remote:
+        transcriber = RemoteFirst(settings.stt_remote, settings.token, local=transcriber)
 
     async def housekeeping() -> None:
         host = socket.gethostname()
@@ -107,13 +109,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/transcribe")
     async def api_transcribe(request: Request, x_buddy_token: str | None = Header(None)):
         check(x_buddy_token)
-        if not Transcriber.available():
+        if not settings.stt_remote and not Transcriber.available():
             raise HTTPException(status_code=503, detail="faster-whisper is not installed on the hub")
         audio = await request.body()
         if not audio:
             raise HTTPException(status_code=400, detail="empty audio")
-        result = await asyncio.to_thread(transcriber.transcribe, audio)
-        log.info("transcribed %.1fs of audio in %.1fs", result["audio_seconds"], result["took_seconds"])
+        try:
+            result = await asyncio.to_thread(transcriber.transcribe, audio)
+        except RuntimeError as exc:  # worker unavailable and no local fallback
+            raise HTTPException(status_code=503, detail=str(exc))
+        log.info("transcribed %.1fs of audio in %.1fs on %s",
+                 result["audio_seconds"], result["took_seconds"], result.get("backend"))
         return result
 
     @app.websocket("/ws")

@@ -49,7 +49,8 @@ Feito (fases 0–2):
 - `ptt/buddy_ptt.py`: F9 no Ubuntu (X11), tocar e só falar (para no silêncio) ou segurar → `pw-record` → hub → digita na janela em foco + Enter. `pynput` instalado com `--no-deps` (o `evdev` só serve para Wayland e precisa de `python3-dev`).
 - `deploy/systemd/`: `claude-buddy-hub` (sobe no login) e `claude-buddy-ptt` (sobe com a sessão gráfica). Substituem o hub em tmux.
 - Simulador: o rótulo de "trabalhando" imita o spinner do Claude Code (`· ✢ ✳ ✶ ✻ ✽` + verbos como "Accomplishing…"); ao terminar mostra "✻ Brewed for 1m 3s · <sessão>".
-- `tests/`: 31 testes passando (`pytest -q tests`).
+- `hub/buddy_hub/worker.py`: worker de STT na GPU (Windows/CUDA, `large-v3-turbo`), com `/health` que diz "ocupado" quando a GPU está em uso; `RemoteFirst` no hub tenta o worker e cai para a CPU.
+- `tests/`: 42 testes passando (`pytest -q tests`).
 
 **Validado no Ubuntu em 2026-10-01** com uma sessão real em tmux: status, ditado via `tmux send-keys`, aprovar e negar (pelo Buddy falso via WebSocket e pelo simulador no Chrome), timeout caindo para o diálogo normal.
 
@@ -64,7 +65,7 @@ Aprendizados da validação:
 
 1. ~~No Ubuntu: validar hub + hooks + tmux com uma sessão real~~ (feito em 2026-10-01; clone em `~/personal/ClaudeBuddy`).
 2. Atalho de ditado no notebook Windows (segurar tecla → mic → STT → `POST /api/dictate` no hub via Tailscale).
-3. STT na GPU do desktop: worker faster-whisper (CUDA, `large-v3-turbo`) no Windows via Tailscale; o hub tenta a GPU primeiro e cai para a CPU local se o desktop estiver desligado, ocupado ou lento. O ponto de troca é a classe `Transcriber` em `stt.py`. (STT em CPU no hub + F9 no Ubuntu: feito em 2026-10-01.)
+3. STT na GPU do desktop: **código pronto** (`hub/buddy_hub/worker.py`, `RemoteFirst` em `stt.py`, `deploy/windows/install-worker.ps1`), testado no Ubuntu com um worker em CPU fazendo o papel do desktop (remoto e fallback). **Falta:** Tailscale nas duas máquinas, rodar o `install-worker.ps1` no desktop e configurar `BUDDY_STT_REMOTE` no hub (README, seção "Transcrição na GPU do desktop").
 4. Firmware ESP32-C5: ESP-IDF 5.5+ ou Arduino core 3.3+, LVGL + LovyanGFX, mesmo protocolo do simulador; testar no Wokwi (extensão do VS Code para alcançar o hub local).
 5. Carcaça na Bambu A1 (estilo TV retrô com antena + LED; OpenSCAD paramétrico; mic na frente, speaker em câmara separada; PLA/PETG; sem logo da Anthropic se publicar).
 6. Agente falante.

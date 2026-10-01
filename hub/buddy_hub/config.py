@@ -41,6 +41,8 @@ class Settings:
     stt_model: str = "small"
     stt_language: str | None = "pt"
     stt_beam_size: int = 1
+    # GPU worker (buddy_hub.worker on the desktop), tried before the local CPU.
+    stt_remote: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,6 +55,7 @@ class Settings:
             stt_model=os.environ.get("BUDDY_STT_MODEL", "small"),
             stt_language=os.environ.get("BUDDY_STT_LANGUAGE", "pt") or None,
             stt_beam_size=int(os.environ.get("BUDDY_STT_BEAM_SIZE", "1")),
+            stt_remote=os.environ.get("BUDDY_STT_REMOTE") or None,
         )
 
 

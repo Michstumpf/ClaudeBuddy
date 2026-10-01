@@ -1,0 +1,6 @@
+# GPU worker (buddy_hub.worker) on the desktop: CUDA 12 + cuDNN 9 runtime from pip,
+# so the CUDA Toolkit does not need to be installed. ctranslate2 4.x needs exactly these majors.
+-r requirements.txt
+-r requirements-stt.txt
+nvidia-cublas-cu12>=12,<13
+nvidia-cudnn-cu12>=9,<10

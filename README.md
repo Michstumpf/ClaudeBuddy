@@ -72,6 +72,44 @@ journalctl --user -u claude-buddy-ptt -f
 - O modelo carrega na primeira transcrição (~600 MB de RAM no hub) e fica em memória.
 - Apertar por menos de 0,4 s conta como toque; frases que o Whisper inventa no silêncio ("Legendas pela comunidade Amara.org") são descartadas.
 
+## Transcrição na GPU do desktop (opcional)
+
+O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU ocupada (≥ 60% de uso ou menos de 2,5 GB de VRAM livre, por exemplo num jogo) ou falhar. O modelo local só carrega quando o fallback acontece.
+
+```
+F9 / Buddy ──áudio──▶ hub (Ubuntu) ──Tailscale──▶ worker (desktop, GPU) ──texto──▶ hub ──▶ digitado no Ubuntu
+                         └── desktop indisponível: CPU do hub
+```
+
+### 1. Tailscale nas duas máquinas
+
+- **Ubuntu:** `curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up`
+- **Desktop:** instale pelo site (tailscale.com/download) e entre na mesma conta.
+- Confira no Ubuntu: `tailscale status` mostra o desktop pelo nome (MagicDNS) e `ping <nome-do-desktop>` responde.
+
+### 2. Desktop Windows
+
+1. Driver NVIDIA atualizado (o CUDA Toolkit **não** é necessário; o runtime vem pelo pip).
+2. `winget install Python.Python.3.12 Git.Git`
+3. Clone o repo (privado; o Git for Windows abre o login do GitHub no navegador): `git clone https://github.com/Michstumpf/ClaudeBuddy.git`
+4. Num PowerShell **como administrador**, na pasta do repo:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deploy\windows\install-worker.ps1
+   ```
+   O script cria o venv, instala as dependências, pede o token do hub (`cat ~/.config/claude-buddy/token` no Ubuntu), testa a GPU (baixa ~1,6 GB na primeira vez), libera a porta 8766 no firewall **só para a faixa do Tailscale** e agenda o worker para subir no login, escondido. Log em `%LOCALAPPDATA%\ClaudeBuddy\worker.log`. Pode rodar de novo depois de um `git pull`.
+
+### 3. Ubuntu: apontar o hub para o desktop
+
+```bash
+systemctl --user edit claude-buddy-hub      # adicione as duas linhas abaixo
+#   [Service]
+#   Environment=BUDDY_STT_REMOTE=http://<nome-do-desktop>:8766
+systemctl --user restart claude-buddy-hub
+curl -s http://<nome-do-desktop>:8766/health -H "X-Buddy-Token: $(cat ~/.config/claude-buddy/token)"
+```
+
+Cada transcrição registra no log do hub onde rodou: `on remote:cuda` (GPU) ou `on cpu` (fallback, com o motivo).
+
 ## Comportamento das aprovações
 
 - O hook `PermissionRequest` só espera o Buddy **se houver um Buddy conectado**. Sem Buddy, devolve na hora e o diálogo normal aparece.
@@ -96,7 +134,7 @@ O firmware do ESP32 vai falar exatamente esse protocolo; o simulador é a refer�
 - [x] Fase 0–2: hub, hooks, aprovação, ditado via tmux, simulador
 - [ ] Atalho de ditado no notebook Windows → hub
 - [x] STT no hub (faster-whisper em CPU) + segurar F9 no Ubuntu
-- [ ] STT na GPU do desktop Windows, com fallback para a CPU do hub
+- [x] Worker de STT na GPU do desktop + fallback para a CPU do hub (código; falta instalar no desktop)
 - [ ] Firmware ESP32-C5 (LVGL + LovyanGFX), testado no Wokwi
 - [ ] Carcaça impressa (Bambu A1)
 - [ ] Agente falante (TTS)
