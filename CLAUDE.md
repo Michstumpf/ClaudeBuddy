@@ -42,6 +42,8 @@ Feito (fases 0–2):
 - `hub/` FastAPI: estado das sessões, broker de aprovações, ditado (tmux ou dry-run), WebSocket do dispositivo. Protocolo no README.
 - `hooks/buddy_hook.py` (stdlib, no-op se o hub cair) + `hooks/settings.example.json`.
 - `simulator/index.html`: tela 320×240, rostos, lista, aprovação, ditado via Web Speech API, painel de eventos falsos.
+  - O rosto é um sprite em pixel art do mascote do Claude Code, refeito a partir do logo do terminal (`BODY`/`EYES` no JS; 1 unidade = 10 px). **Uso pessoal apenas:** trocar por um personagem próprio antes de publicar o repo ou a carcaça. A grade de pixels porta direto para o firmware (LVGL canvas).
+  - Na lista há um botão "◀ Buddy"; lista e detalhe voltam sozinhos para o rosto após 30 s sem toque.
 - `hub/buddy_hub/local_sessions.py`: lê `~/.claude/sessions/<pid>.json` (nome do `/rename`, busy/idle/waiting, pane tmux) e corrige o que os hooks não reportam. Detalhes no README.
 - `tests/`: 30 testes passando (`pytest -q tests`).
 
