@@ -12,6 +12,7 @@ using Sender = void (*)(const std::string& json);
 void begin(Sender send);
 void apply(const app::State& state, bool connected);  // every state message
 void on_joke(const std::string& text);
+void set_battery(int percent, bool charging);  // percent < 0: no battery, hide it
 void loop();  // animations and timeouts; call often
 
 }  // namespace ui

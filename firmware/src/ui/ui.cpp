@@ -40,7 +40,7 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
 lv_obj_t* pref_btn_[4];  // jokes, joke_voice, interval, weather
 
-lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_;
+lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_, *bar_right_;
 lv_obj_t *spin_row_ = nullptr, *glyph_ = nullptr, *verb_ = nullptr;
 lv_obj_t *fx_alert_, *fx_zzz_, *fx_spark_[2];
 std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_;
@@ -545,6 +545,9 @@ void begin(Sender send) {
   lv_obj_t* bar = box(scr, 0, 218, 320, 22, kBar);
   bar_left_ = text(bar, &buddy_font_11, kMuted);
   lv_obj_align(bar_left_, LV_ALIGN_LEFT_MID, 8, 0);
+  bar_right_ = text(bar, &buddy_font_11, kMuted);
+  lv_label_set_text(bar_right_, "");
+  lv_obj_align(bar_right_, LV_ALIGN_RIGHT_MID, -8, 0);
 
   for (auto* o : {fx_alert_, fx_zzz_, fx_spark_[0], fx_spark_[1]}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   mood_ = app::Mood::Idle;  // force the first set_mood() to draw everything
@@ -569,6 +572,15 @@ void on_joke(const std::string& t) {
   lv_obj_remove_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_x(sprite_, kSpriteX - 34);  // step aside for the bubble
   bubble_until_ = millis() + 15000;
+}
+
+void set_battery(int percent, bool charging) {
+  if (percent < 0) {
+    lv_label_set_text(bar_right_, "");
+    return;
+  }
+  lv_label_set_text_fmt(bar_right_, charging ? "bateria %d%% +" : "bateria %d%%", percent);
+  lv_obj_set_style_text_color(bar_right_, percent <= 15 && !charging ? kBad : kMuted, 0);
 }
 
 void loop() {

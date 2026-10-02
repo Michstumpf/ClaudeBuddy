@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 
 #include "app/protocol.h"
+#include "hal/board.h"
 #include "hal/lvgl_port.h"
 #include "net/serial_link.h"
 #include "ui/ui.h"
@@ -49,6 +50,11 @@ void setup() {
 
 void loop() {
   net::serial_loop();
+  static uint32_t battery_at = 0;
+  if (hal::board::kHasBattery && (battery_at == 0 || millis() - battery_at > 30000)) {
+    battery_at = millis();
+    ui::set_battery(hal::board::battery_percent(), hal::board::charging());
+  }
   ui::loop();
   hal::lvgl_loop();
   delay(5);

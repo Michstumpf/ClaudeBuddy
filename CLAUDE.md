@@ -5,14 +5,14 @@ Commits com a identidade pessoal: `Michael Stumpf Sampaio <michstumpf@gmail.com>
 
 ## O que é
 
-Mascote de mesa numa **ESP32-C5 NM-CYD-C5** (tela 2.8" touch, WiFi 2.4/5 GHz, BLE, 802.15.4) que:
+Mascote de mesa num **M5Stack CoreS3** (ESP32-S3, tela 2" 320×240 touch, 2 microfones, alto-falante, sensor de proximidade/luz, acelerômetro, RTC, câmera) com o **Battery Module 13.2 (1500 mAh)**, comprado em 2026-10-02 no lugar da ideia original (ESP32-C5 NM-CYD-C5, que fica como "Buddy de status" opcional, sem áudio). O Buddy:
 - mostra o estado das sessões do Claude Code (rostos: trabalhando, esperando, terminou, dormindo, offline);
 - aprova/nega `PermissionRequest` com um toque;
 - recebe ditado por voz e entrega na sessão certa;
 - (futuro) responde falando.
 
-O hardware ainda não chegou. Até lá: simulador no navegador (`simulator/index.html`) e, depois, firmware no Wokwi (ESP32-C5 é alpha no Wokwi; se falhar, simular com ESP32-S3).
-Confirmar quando chegar: controlador da tela (ILI9341/ST7789), tipo de touch, PSRAM, mic/speaker (senão: INMP441 + MAX98357A), se o firmware de fábrica é xiaozhi.
+O CoreS3 ainda não chegou. O firmware já compila para ele (`pio run -e m5_cores3`, via M5Unified) e as telas são testadas no Wokwi com ESP32-S3 + ILI9341 (mesma resolução).
+Quando chegar: gravar pelo USB-C, conferir tela/toque/bateria, depois áudio (segurar na tela para falar; respostas e piadas pelo alto-falante), e aproveitar proximidade (acordar ao chegar perto), luz (brilho) e acelerômetro (chacoalhar = piada). A carcaça vira capa/suporte de TV retrô para o CoreS3.
 
 ## Máquinas do Michael
 

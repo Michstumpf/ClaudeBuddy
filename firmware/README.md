@@ -5,10 +5,20 @@ C++ (Arduino core 3.x via pioarduino) + LVGL 9 + LovyanGFX + ArduinoJson. O simu
 | Pasta | O que é |
 |---|---|
 | `src/app/` | Estado, protocolo do hub e regras do rosto. C++ puro, testado no host (`pio test -e native`). |
-| `src/hal/` | Tela, touch e a ponte com a LVGL. **Só aqui muda de uma placa para outra.** |
+| `src/hal/` | Uma implementação por placa (`board_wokwi_s3.cpp`, `board_m5_cores3.cpp`) da interface em `board.h`: tela, toque, bateria e o que a placa tem (`kHasAudio`…). **Só aqui muda de uma placa para outra.** |
 | `src/ui/` | As telas (LVGL), o sprite do mascote (`sprite.h`, mesma grade do simulador) e as fontes. |
 | `src/net/` | Link com o hub. Por enquanto o link serial de teste; o WebSocket vem a seguir. |
 | `tools/` | `screens.py` (todas as telas no Wokwi) e `make_fonts.sh` (fontes com acentos). |
+
+## Placas
+
+| Ambiente | Placa | Para quê |
+|---|---|---|
+| `m5_cores3` | **M5Stack CoreS3** (ESP32-S3, 2" 320×240 touch, microfones, alto-falante, bateria) | O Buddy de verdade. `pio run -e m5_cores3 -t upload` pelo USB-C. Usa a M5Unified (tela, toque, energia, áudio). |
+| `wokwi_s3` | ESP32-S3 + ILI9341 320×240 no Wokwi | Placa de referência para testar as telas sem hardware; mesma resolução do CoreS3. |
+| `native` | o próprio Ubuntu | Testes do protocolo e das regras do rosto. |
+
+A NM-CYD-C5 pode voltar como um "Buddy de status" (sem áudio): basta um `board_*.cpp` novo.
 
 ## Testar sem hardware
 

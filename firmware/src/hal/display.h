@@ -1,6 +1,5 @@
-// Board-specific display + touch setup. Everything outside src/hal talks to
-// `Display` only, so moving from the Wokwi ESP32-S3 to the real NM-CYD-C5 means
-// adding one #elif block here (once its display/touch chips are known).
+// LovyanGFX panel + touch setup for the boards that are wired by hand (Wokwi).
+// Boards with a vendor library (M5Stack CoreS3 via M5Unified) don't use this.
 #pragma once
 
 #define LGFX_USE_V1
@@ -54,6 +53,4 @@ class Display : public lgfx::LGFX_Device {
     setPanel(&panel_);
   }
 };
-#else
-#error "Unknown board: define BOARD_WOKWI_S3 (or add the real board to src/hal/display.h)"
 #endif
