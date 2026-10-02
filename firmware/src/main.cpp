@@ -6,21 +6,51 @@
 #include "app/protocol.h"
 #include "hal/board.h"
 #include "hal/lvgl_port.h"
+#include "net/hub_link.h"
 #include "net/serial_link.h"
 #include "ui/ui.h"
 
-// Test-only commands from Wokwi scenarios (never sent by the hub).
-static bool test_command(const std::string& json) {
-  if (json.find("\"_tap\"") == std::string::npos) return false;
+// Commands that only come over USB serial, never from the hub:
+//   {"type":"_tap","x":..,"y":..}  test tap (Wokwi scenarios)
+//   {"type":"_config","ssid":..,"password":..,"host":..,"port":..,"token":..}
+//                                  save WiFi + hub to flash and restart
+static bool local_command(const std::string& json) {
+  if (json.find("\"_tap\"") == std::string::npos && json.find("\"_config\"") == std::string::npos) return false;
   JsonDocument doc;
-  if (deserializeJson(doc, json) || doc["type"] != "_tap") return false;
-  hal::inject_tap(doc["x"] | 0, doc["y"] | 0);
-  Serial.printf("rx: tap %d,%d\n", (int)(doc["x"] | 0), (int)(doc["y"] | 0));
-  return true;
+  if (deserializeJson(doc, json)) return false;
+  if (doc["type"] == "_tap") {
+    hal::inject_tap(doc["x"] | 0, doc["y"] | 0);
+    Serial.printf("rx: tap %d,%d\n", (int)(doc["x"] | 0), (int)(doc["y"] | 0));
+    return true;
+  }
+  if (doc["type"] == "_config") {
+    net::HubConfig c = net::load_config();
+    if (doc["ssid"].is<const char*>()) c.ssid = doc["ssid"].as<const char*>();
+    if (doc["password"].is<const char*>()) c.password = doc["password"].as<const char*>();
+    if (doc["host"].is<const char*>()) c.host = doc["host"].as<const char*>();
+    if (doc["token"].is<const char*>()) c.token = doc["token"].as<const char*>();
+    c.port = doc["port"] | c.port;
+    net::save_config(c);
+    Serial.println("config saved, restarting");
+    delay(200);
+    ESP.restart();
+  }
+  return false;
+}
+
+// Everything the Buddy says goes to the hub, and is echoed on serial (tests).
+static void send_to_hub(const std::string& json) {
+  net::serial_send(json);
+  net::hub_send(json);
+}
+
+static void on_status(const char* status, bool connected) {
+  Serial.printf("link: %s\n", status);
+  ui::set_link(status, connected);
 }
 
 static void on_message(const std::string& json) {
-  if (test_command(json)) return;
+  if (local_command(json)) return;
   app::Incoming in = app::parse(json);
   switch (in.type) {
     case app::MessageType::State:
@@ -43,13 +73,15 @@ void setup() {
   Serial.setRxBufferSize(8192);
   Serial.begin(115200);
   hal::lvgl_begin();
-  ui::begin(net::serial_send);
+  ui::begin(send_to_hub);
   net::serial_begin(on_message);
+  net::hub_begin(net::load_config(), on_message, on_status);
   Serial.println("buddy: ready");
 }
 
 void loop() {
   net::serial_loop();
+  net::hub_loop();
   static uint32_t battery_at = 0;
   if (hal::board::kHasBattery && (battery_at == 0 || millis() - battery_at > 30000)) {
     battery_at = millis();

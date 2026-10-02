@@ -43,6 +43,23 @@ Sem VS Code também dá: `wokwi-cli . --timeout 60000` + a ponte, mas aí só h�
 
 A ponte existe até o firmware ter WiFi + WebSocket próprios.
 
+## WiFi e hub
+
+`src/net/hub_link.cpp` conecta no WiFi e no WebSocket do hub (`/ws?token=…`), reconecta sozinho (WiFi e hub) e manda um heartbeat para notar um hub que sumiu. Enquanto não conecta, o rosto diz o porquê ("conectando ao WiFi…", "procurando o hub…"). O link serial continua ativo junto (testes e ponte).
+
+Configuração, do menor para o maior peso:
+
+1. **Na compilação**, por variáveis de ambiente: `BUDDY_WIFI_SSID`, `BUDDY_WIFI_PASSWORD`, `BUDDY_HUB_HOST`, `BUDDY_HUB_TOKEN` (o ambiente `wokwi_s3` já vem com `Wokwi-GUEST` e `host.wokwi.internal`).
+2. **Gravada na placa** (NVS), pela serial USB, sem recompilar — reinicia e passa a valer:
+   ```
+   {"type":"_config","ssid":"MinhaRede","password":"…","host":"192.168.0.10","port":8765,"token":"…"}
+   ```
+   (Depois vem a configuração pelo celular, com a rede "Buddy-setup".)
+
+**No Wokwi gratuito o WiFi funciona, mas o hub não é alcançável:** `host.wokwi.internal` depende do gateway privado, que é só dos planos pagos. O WebSocket é validado no CoreS3; no simulador, use a ponte serial.
+
+**Para o CoreS3 alcançar o hub** ele precisa escutar na rede local (`--host 0.0.0.0`, hoje é só `127.0.0.1`). Isso fica para quando a placa chegar, com o cuidado de aceitar só a rede de casa: o Ubuntu é um notebook de trabalho que pode estar em outras redes.
+
 ## O que o Wokwi não cobre (fica para a placa real)
 
 - Áudio (microfone I2S, alto-falante).

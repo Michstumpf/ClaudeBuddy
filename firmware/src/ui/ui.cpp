@@ -47,6 +47,7 @@ lv_obj_t *fx_alert_, *fx_zzz_, *fx_spark_[2];
 std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_;
 
 app::Mood mood_ = app::Mood::Off;
+std::string link_status_;
 std::string done_session_;
 uint32_t done_at_ = 0, bubble_until_ = 0, frame_at_ = 0;
 int frame_ = 0;
@@ -170,7 +171,9 @@ void hide_bubble() {
 void refresh() {
   if (done_at_ && millis() - done_at_ > 8000) { done_at_ = 0; done_session_.clear(); }
   if (bubble_until_ && (state_.night || !connected_)) hide_bubble();
-  set_mood(app::mood(state_, connected_, false, done_session_));
+  app::MoodView v = app::mood(state_, connected_, false, done_session_);
+  if (!connected_ && !link_status_.empty()) v.label = link_status_;
+  set_mood(v);
 
   if (state_.weather.valid && state_.settings.weather)
     lv_label_set_text_fmt(weather_, "%d° %s", state_.weather.temp, state_.weather.place.c_str());
@@ -576,6 +579,21 @@ void on_joke(const std::string& t) {
   lv_obj_remove_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_x(sprite_, kSpriteX - 34);  // step aside for the bubble
   bubble_until_ = millis() + 15000;
+}
+
+void set_link(const char* status, bool connected) {
+  // Only a hub connection that drops makes the Buddy offline. Failed attempts
+  // must not: another link (the serial bridge) may be delivering the state.
+  static bool was_connected = false;
+  link_status_ = status;
+  if (connected) {
+    was_connected = true;
+  } else if (was_connected) {
+    was_connected = false;
+    connected_ = false;
+    refresh();
+    route();
+  }
 }
 
 void set_battery(int percent, bool charging) {

@@ -13,6 +13,8 @@ void begin(Sender send);
 void apply(const app::State& state, bool connected);  // every state message
 void on_joke(const std::string& text);
 void set_battery(int percent, bool charging);  // percent < 0: no battery, hide it
+// Link status: while not connected the face says why ("conectando ao WiFi…").
+void set_link(const char* status, bool connected);
 void loop();  // animations and timeouts; call often
 
 }  // namespace ui

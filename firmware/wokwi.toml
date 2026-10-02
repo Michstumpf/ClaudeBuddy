@@ -6,3 +6,7 @@ elf = ".pio/build/wokwi_s3/firmware.elf"
 # Exposes the simulated serial port on localhost:4000 (RFC 2217), so
 # tools/hub_bridge.py can connect the simulated Buddy to the real hub.
 rfc2217ServerPort = 4000
+
+# Lets the simulated WiFi reach this machine as host.wokwi.internal.
+[net]
+gateway = true
