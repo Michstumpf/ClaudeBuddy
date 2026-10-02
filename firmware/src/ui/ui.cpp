@@ -39,6 +39,7 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
 lv_obj_t* pref_btn_[4];  // jokes, joke_voice, interval, weather
+lv_obj_t* weather_label_;  // "Temperatura em <cidade>"
 
 lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_, *bar_right_;
 lv_obj_t *spin_row_ = nullptr, *glyph_ = nullptr, *verb_ = nullptr;
@@ -444,6 +445,7 @@ void build_settings(lv_obj_t* v) {
     lv_obj_set_style_pad_ver(row, 2, 0);
     lv_obj_t* l = text(row, &buddy_font_11, kFg);
     lv_label_set_text(l, names[i]);
+    if (i == 3) weather_label_ = l;
     pref_btn_[i] = button(row, "", kBtn, on_pref, reinterpret_cast<void*>(static_cast<uintptr_t>(i)));
     lv_obj_set_size(pref_btn_[i], 92, 24);
     lv_obj_set_style_pad_ver(pref_btn_[i], 0, 0);
@@ -463,6 +465,8 @@ void fill_settings() {
   char buf[16];
   snprintf(buf, sizeof(buf), "%d min", state_.settings.joke_interval_min);
   set_button_text(pref_btn_[2], buf);
+  // The city is changed from the web panel (no keyboard on a 2" screen).
+  lv_label_set_text_fmt(weather_label_, "Temperatura em %s", state_.settings.city.c_str());
 }
 
 // ---- navigation ----

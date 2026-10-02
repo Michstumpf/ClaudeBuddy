@@ -19,7 +19,8 @@ SHOTS = ROOT / "wokwi" / "screenshots"
 WOKWI = os.environ.get("WOKWI_CLI", str(Path.home() / ".wokwi" / "bin" / "wokwi-cli"))
 
 WEATHER = {"place": "Canoas", "temp": 17, "text": "nublado", "icon": "☁"}
-SETTINGS = {"jokes": True, "joke_voice": True, "joke_interval_min": 45, "weather": True}
+SETTINGS = {"jokes": True, "joke_voice": True, "joke_interval_min": 45, "weather": True,
+            "city": "Porto Alegre", "city_geo": {"name": "Porto Alegre", "lat": -30.03, "lon": -51.23}}
 
 
 def state(*sessions, pending=(), night=False, event=None):

@@ -131,10 +131,18 @@
   .conn { font-size: 13px; } .conn b { color: var(--ok); } .conn b.off { color: var(--bad); }
   #log { font: 11px ui-monospace, monospace; color: var(--muted); max-height: 200px; overflow-y: auto; white-space: pre-wrap; }
   @media (max-width: 720px) { .screen-wrap { width: 320px; height: 240px; } .screen { transform: none; } }
+  .device-box { position: relative; }
+  .device-box.real .device { transform-origin: top left; }
+  .calib { display: none; margin-top: 8px; }
+  .calib.on { display: block; }
+  .calib .card { height: 10px; background: var(--accent); border-radius: 3px; margin: 6px 0; }
+  .panel input[type=range] { padding: 0; }
+  .result { font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
 
+<div class="device-box" id="deviceBox">
 <div class="device" id="device">
   <div class="antenna"></div>
   <div class="shell">
@@ -174,7 +182,7 @@
           <div class="opt"><span>Piadas de vez em quando</span><button class="btn" data-pref="jokes"></button></div>
           <div class="opt"><span>Falar as piadas</span><button class="btn" data-pref="joke_voice"></button></div>
           <div class="opt"><span>Intervalo entre piadas</span><button class="btn" id="prefInterval"></button></div>
-          <div class="opt"><span>Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
+          <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
           <div class="btns">
             <button class="btn" data-go="list">◀ Voltar</button>
             <button class="btn info" id="jokeNow">😄 Contar uma agora</button>
@@ -224,12 +232,28 @@
   </div>
   <div class="feet"><span></span><span></span></div>
 </div>
+</div>
 
 <div class="panel">
   <section>
     <h2>Conexão com o hub</h2>
     <input id="token" placeholder="token (de ~/.config/claude-buddy/token)">
     <p class="conn">Estado: <b id="connState" class="off">desconectado</b></p>
+  </section>
+  <section>
+    <h2>Tamanho real (CoreS3, tela de 2")</h2>
+    <button id="realSize">Mostrar no tamanho real</button>
+    <div class="calib" id="calib">
+      <p class="result">Encoste um cartão de crédito na tela e ajuste até a barra ter a largura dele (8,56 cm):</p>
+      <div class="card" id="calibCard"></div>
+      <input type="range" id="calibRange" min="2" max="8" step="0.05">
+    </div>
+  </section>
+  <section>
+    <h2>Cidade do clima</h2>
+    <input id="city" placeholder="Porto Alegre, ou São José, SC">
+    <button id="citySave" style="margin-top:6px">Salvar cidade</button>
+    <p class="result" id="cityResult"></p>
   </section>
   <section>
     <h2>Simular eventos do Claude Code</h2>
@@ -293,6 +317,9 @@ function onMessage(msg) {
     speak(msg);
   } else if (msg.type === "joke") {
     showJoke(msg);
+  } else if (msg.type === "settings_result") {
+    $("cityResult").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
+    log(`configuração: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
   } else if (msg.type === "dictate_result") {
     log(`ditado → ${msg.session || "?"}: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
     $("dText").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
@@ -340,6 +367,8 @@ function render() {
       b.textContent = on ? "Ligado" : "Desligado"; b.classList.toggle("on", on);
     });
     $("prefInterval").textContent = `${state.settings.joke_interval_min} min`;
+    const geo = state.settings.city_geo;
+    $("weatherLabel").textContent = `Temperatura em ${geo ? geo.name : (state.settings.city || "Canoas")}`;
   }
   if (view === "list") {
     $("listCount").textContent = `${state.sessions.length} sessões`;
@@ -622,6 +651,40 @@ async function refreshUsage() {
 }
 refreshUsage();
 setInterval(refreshUsage, 60000);
+
+// ---------- real size: the CoreS3's 2" screen is 40.6 x 30.5 mm ----------
+const SCREEN_MM = 40.64;   // 2" diagonal at 4:3
+const CARD_MM = 85.6;      // a credit card, to calibrate this monitor's px per mm
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+let pxPerMm = parseFloat(store.get("buddyPxPerMm")) || 96 / 25.4;  // CSS's nominal 96 dpi
+let realSize = store.get("buddyRealSize") === "1";
+function applySize() {
+  const device = $("device"), box = $("deviceBox");
+  $("calibRange").value = pxPerMm;
+  $("calibCard").style.width = `${CARD_MM * pxPerMm}px`;
+  $("calib").classList.toggle("on", realSize);
+  $("realSize").textContent = realSize ? "Voltar ao tamanho ampliado" : "Mostrar no tamanho real";
+  box.classList.toggle("real", realSize);
+  if (!realSize) { device.style.transform = ""; box.style.width = box.style.height = ""; return; }
+  // The screen is drawn at 640 px wide (320 px scaled 2x); scale the whole device
+  // so it becomes SCREEN_MM wide on this monitor.
+  const k = (SCREEN_MM * pxPerMm) / 640;
+  device.style.transform = `scale(${k})`;
+  box.style.width = `${device.offsetWidth * k}px`;
+  box.style.height = `${device.offsetHeight * k}px`;
+}
+$("realSize").onclick = () => { realSize = !realSize; store.set("buddyRealSize", realSize ? "1" : "0"); applySize(); };
+$("calibRange").oninput = () => { pxPerMm = parseFloat($("calibRange").value); store.set("buddyPxPerMm", pxPerMm); applySize(); };
+applySize();
+
+// ---------- weather city (typed here: a 2" screen is no place for a keyboard) ----------
+$("citySave").onclick = () => {
+  const city = $("city").value.trim();
+  if (!city) return;
+  send({ type: "settings", values: { city } });
+  $("cityResult").textContent = "procurando…";
+};
 
 $("token").addEventListener("change", () => {
   token = $("token").value.trim();

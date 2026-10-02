@@ -96,3 +96,78 @@ def test_settings_screen_and_joke_now(monkeypatch):
         ws.send_json({"type": "joke_now"})
         joke = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "joke")
         assert "url" not in joke  # bubble only
+
+
+# ---- weather city ----------------------------------------------------------------
+
+from buddy_hub import weather as weather_module  # noqa: E402
+from buddy_hub.weather import pick  # noqa: E402
+
+RESULTS = [
+    {"name": "São José", "admin1": "Santa Catarina", "country": "Brasil", "country_code": "BR", "latitude": -27.6, "longitude": -48.6},
+    {"name": "San José", "admin1": "San José", "country": "Costa Rica", "country_code": "CR", "latitude": 9.9, "longitude": -84.1},
+    {"name": "São José", "admin1": "Rio Grande do Sul", "country": "Brasil", "country_code": "BR", "latitude": -29.0, "longitude": -51.0},
+]
+
+
+def test_pick_city():
+    assert pick(RESULTS, "RS")["admin1"] == "Rio Grande do Sul"           # UF code
+    assert pick(RESULTS, "santa catarina")["admin1"] == "Santa Catarina"  # state name
+    assert pick(RESULTS, "Costa Rica")["country_code"] == "CR"            # country
+    assert pick(RESULTS[1:2] + RESULTS[:1])["country_code"] == "BR"       # Brazil first by default
+    assert pick([]) is None
+
+
+def test_change_city_over_websocket(monkeypatch):
+    found = {"name": "Porto Alegre", "admin1": "Rio Grande do Sul", "country_code": "BR", "lat": -30.03, "lon": -51.23}
+    monkeypatch.setattr(weather_module, "geocode", lambda q: found if q.startswith("Porto") else None)
+    app = create_app(Settings(token=TOKEN, dictation_backend="dry-run"))
+    with TestClient(app) as c, c.websocket_connect(f"/ws?token={TOKEN}") as ws:
+        assert ws.receive_json()["settings"]["city"] == "Canoas"   # fallback
+        ws.send_json({"type": "settings", "values": {"city": "Cidadeinexistente"}})
+        bad = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "settings_result")
+        assert bad["ok"] is False and "Cidadeinexistente" in bad["detail"]
+
+        ws.send_json({"type": "settings", "values": {"city": "Porto   Alegre", "city_geo": {"name": "hack", "lat": 0, "lon": 0}}})
+        good = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "settings_result")
+        assert good["ok"] is True and good["detail"] == "Porto Alegre, Rio Grande do Sul"
+        state = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "state")
+        assert state["settings"]["city"] == "Porto Alegre"
+        assert state["settings"]["city_geo"]["name"] == "Porto Alegre"  # the hub's search, not the client's
+
+
+# ---- config.toml ---------------------------------------------------------------
+
+from buddy_hub.config import Settings as HubSettings  # noqa: E402
+
+
+def test_config_file_layers(monkeypatch, tmp_path):
+    monkeypatch.setattr("buddy_hub.config.TOKEN_FILE", tmp_path / "token")
+    for var in ("BUDDY_STT_MODEL", "BUDDY_APPROVAL_TIMEOUT", "BUDDY_WEATHER_PLACE"):
+        monkeypatch.delenv(var, raising=False)
+    config = {"hub": {"approval_timeout": 30}, "stt": {"model": "medium"},
+              "weather": {"city": "Florianópolis", "latitude": -27.6, "longitude": -48.5},
+              "defaults": {"jokes": False, "joke_interval_min": 60}}
+    s = HubSettings.from_env(config)
+    assert (s.approval_timeout, s.stt_model, s.weather_city) == (30.0, "medium", "Florianópolis")
+    assert s.stt_beam_size == 1  # not in the file: built-in default
+    monkeypatch.setenv("BUDDY_STT_MODEL", "large-v3-turbo")  # env beats the file
+    assert HubSettings.from_env(config).stt_model == "large-v3-turbo"
+
+    p = Prefs(tmp_path / "prefs.json", defaults={**s.pref_defaults, "city": s.weather_city})
+    assert (p["jokes"], p["joke_interval_min"], p["city"]) == (False, 60, "Florianópolis")
+    p.update({"jokes": True})  # a choice on the screen...
+    again = Prefs(tmp_path / "prefs.json", defaults={**s.pref_defaults, "city": s.weather_city})
+    assert again["jokes"] is True  # ...beats the config default
+
+
+def test_example_config_is_valid_and_matches_defaults():
+    import tomllib
+    from pathlib import Path
+
+    example = tomllib.loads((Path(__file__).resolve().parents[1] / "hub" / "config.example.toml").read_text())
+    s = HubSettings(token="x")
+    assert example["hub"]["approval_timeout"] == s.approval_timeout
+    assert example["stt"]["model"] == s.stt_model and example["tts"]["voice"] == s.tts_voice
+    assert example["weather"]["city"] == s.weather_city
+    assert {k: v for k, v in example["defaults"].items()} == {k: prefs_module.DEFAULTS[k] for k in example["defaults"]}

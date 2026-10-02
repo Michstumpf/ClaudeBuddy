@@ -20,7 +20,8 @@ static const char* kState = R"({
      "summary": "git push --force origin main", "dangerous": true, "expires_at": 1790000000.5}
   ],
   "devices": 2, "night": false,
-  "settings": {"jokes": false, "joke_voice": true, "joke_interval_min": 30, "weather": true},
+  "settings": {"jokes": false, "joke_voice": true, "joke_interval_min": 30, "weather": true,
+               "city": "porto alegre", "city_geo": {"name": "Porto Alegre", "lat": -30.03, "lon": -51.23}},
   "weather": {"place": "Canoas", "temp": 17, "min": 12, "max": 18, "text": "nublado", "icon": "☁", "updated_at": 1.0},
   "event": {"kind": "approval", "session": "DataHub Sharing Chat", "id": "p1"}
 })";
@@ -40,6 +41,7 @@ void test_parses_full_state() {
   TEST_ASSERT_EQUAL(2, st.devices);
   TEST_ASSERT_FALSE(st.settings.jokes);
   TEST_ASSERT_EQUAL(30, st.settings.joke_interval_min);
+  TEST_ASSERT_EQUAL_STRING("Porto Alegre", st.settings.city.c_str());
   TEST_ASSERT_TRUE(st.weather.valid);
   TEST_ASSERT_EQUAL(17, st.weather.temp);
   TEST_ASSERT_EQUAL_STRING("nublado", st.weather.text.c_str());
@@ -51,6 +53,7 @@ void test_old_hub_without_new_fields() {
   TEST_ASSERT_TRUE(in.type == MessageType::State);
   TEST_ASSERT_FALSE(in.state.weather.valid);
   TEST_ASSERT_TRUE(in.state.settings.jokes);  // defaults
+  TEST_ASSERT_EQUAL_STRING("Canoas", in.state.settings.city.c_str());
   TEST_ASSERT_EQUAL_STRING("", in.state.event.kind.c_str());
 }
 

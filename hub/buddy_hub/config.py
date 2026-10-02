@@ -1,9 +1,43 @@
+import logging
 import os
 import secrets
-from dataclasses import dataclass
+import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
 
+log = logging.getLogger("buddy.config")
+
 TOKEN_FILE = Path.home() / ".config" / "claude-buddy" / "token"
+CONFIG_FILE = Path.home() / ".config" / "claude-buddy" / "config.toml"
+
+
+def load_config_file(path: Path | None = None) -> dict:
+    """The installation's config.toml (see hub/config.example.toml); {} if absent or broken."""
+    path = path or Path(os.environ.get("BUDDY_CONFIG") or CONFIG_FILE).expanduser()
+    if not path.exists():
+        return {}
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        log.warning("ignoring %s: %s", path, exc)
+        return {}
+
+
+class _Layered:
+    """Built-in default < config.toml < BUDDY_* env var, one setting at a time."""
+
+    def __init__(self, file: dict):
+        self.file = file
+
+    def get(self, section: str, key: str, env: str | None, default, cast=str):
+        value = self.file.get(section, {}).get(key, default)
+        if env and os.environ.get(env) is not None:
+            value = os.environ[env]
+        try:
+            return cast(value) if value is not None else None
+        except (TypeError, ValueError):
+            log.warning("bad value for [%s] %s: %r; using %r", section, key, value, default)
+            return default
 
 
 def load_or_create_token() -> str:
@@ -50,22 +84,33 @@ class Settings:
     # Joke and weather loops (off in tests, which must not hit the network).
     background_extras: bool = False
     prefs_file: Path | None = None  # None = ~/.config/claude-buddy/prefs.json
+    # [defaults] of config.toml: first-run choices of the settings screen.
+    pref_defaults: dict = field(default_factory=dict)
+    # [weather]: default city and the coordinates used when search is unavailable.
+    weather_city: str = "Canoas"
+    weather_lat: float = -29.92
+    weather_lon: float = -51.18
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, config: dict | None = None) -> "Settings":
+        c = _Layered(load_config_file() if config is None else config)
         return cls(
             token=load_or_create_token(),
-            approval_timeout=float(os.environ.get("BUDDY_APPROVAL_TIMEOUT", "20")),
+            approval_timeout=c.get("hub", "approval_timeout", "BUDDY_APPROVAL_TIMEOUT", 20.0, float),
             dictation_backend=os.environ.get("BUDDY_DICTATION", "auto"),
             sessions_dir=_sessions_dir(),
-            stale_working=float(os.environ.get("BUDDY_STALE_WORKING", "600")),
-            stt_model=os.environ.get("BUDDY_STT_MODEL", "small"),
-            stt_language=os.environ.get("BUDDY_STT_LANGUAGE", "pt") or None,
-            stt_beam_size=int(os.environ.get("BUDDY_STT_BEAM_SIZE", "1")),
-            stt_remote=os.environ.get("BUDDY_STT_REMOTE") or None,
-            tts_voice=os.environ.get("BUDDY_TTS_VOICE", "pt_BR-faber-medium"),
-            speak_on=os.environ.get("BUDDY_SPEAK_ON", "auto"),
+            stale_working=c.get("hub", "stale_working", "BUDDY_STALE_WORKING", 600.0, float),
+            stt_model=c.get("stt", "model", "BUDDY_STT_MODEL", "small"),
+            stt_language=c.get("stt", "language", "BUDDY_STT_LANGUAGE", "pt") or None,
+            stt_beam_size=c.get("stt", "beam_size", "BUDDY_STT_BEAM_SIZE", 1, int),
+            stt_remote=c.get("stt", "remote", "BUDDY_STT_REMOTE", "") or None,
+            tts_voice=c.get("tts", "voice", "BUDDY_TTS_VOICE", "pt_BR-faber-medium"),
+            speak_on=c.get("hub", "speak_on", "BUDDY_SPEAK_ON", "auto"),
             background_extras=True,
+            pref_defaults=dict(c.file.get("defaults", {})),
+            weather_city=c.get("weather", "city", "BUDDY_WEATHER_PLACE", "Canoas"),
+            weather_lat=c.get("weather", "latitude", "BUDDY_WEATHER_LAT", -29.92, float),
+            weather_lon=c.get("weather", "longitude", "BUDDY_WEATHER_LON", -51.18, float),
         )
 
 

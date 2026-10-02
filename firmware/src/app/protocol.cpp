@@ -54,6 +54,10 @@ Incoming parse(const std::string& json) {
       st.settings.joke_voice = set["joke_voice"] | true;
       st.settings.weather = set["weather"] | true;
       st.settings.joke_interval_min = set["joke_interval_min"] | 45;
+      // The hub's search result wins over what was typed ("porto alegre").
+      std::string city = str(set["city_geo"]["name"]);
+      if (city.empty()) city = str(set["city"]);
+      if (!city.empty()) st.settings.city = city;
     }
     JsonObjectConst w = doc["weather"];
     if (!w.isNull()) {

@@ -1,0 +1,35 @@
+# Claude Buddy hub configuration: defaults for this installation.
+#
+# Copy to ~/.config/claude-buddy/config.toml (or point BUDDY_CONFIG at a file)
+# and keep only what you want to change; anything left out uses the value shown.
+#
+# Precedence, lowest to highest:
+#   built-in defaults  <  this file  <  BUDDY_* environment variables
+# The [defaults] section only seeds a fresh install: once a choice is made on
+# the Buddy's settings screen it is kept in ~/.config/claude-buddy/prefs.json
+# (delete that file to go back to these defaults).
+
+[hub]
+approval_timeout = 20        # seconds a permission waits for a tap before the normal dialog (BUDDY_APPROVAL_TIMEOUT)
+stale_working = 600          # hook-only session stuck "working" this long goes idle (BUDDY_STALE_WORKING)
+speak_on = "auto"            # auto | local | devices | off (BUDDY_SPEAK_ON)
+
+[stt]                        # speech-to-text
+model = "small"              # Whisper model on the hub's CPU (BUDDY_STT_MODEL)
+language = "pt"              # "" = auto-detect (BUDDY_STT_LANGUAGE)
+beam_size = 1                # 1 = fastest (BUDDY_STT_BEAM_SIZE)
+remote = ""                  # GPU worker, e.g. "http://desktop-pc01:8766" (BUDDY_STT_REMOTE)
+
+[tts]                        # spoken replies
+voice = "pt_BR-faber-medium" # Piper voice on the hub (BUDDY_TTS_VOICE)
+
+[weather]
+city = "Canoas"              # default city for a fresh install
+latitude = -29.92            # used when the city search is unavailable
+longitude = -51.18
+
+[defaults]                   # first-run choices on the settings screen
+jokes = true
+joke_voice = true
+joke_interval_min = 45       # 15, 30, 45, 60 or 120
+weather = true

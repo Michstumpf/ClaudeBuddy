@@ -53,7 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.stt_remote:  # the same desktop worker also has the GPU voice
         speaker = RemoteFirstSpeaker(settings.stt_remote, settings.token, local=speaker)
     summarizer = Summarizer(load_key())
-    prefs = Prefs(settings.prefs_file)
+    prefs = Prefs(settings.prefs_file, defaults={**settings.pref_defaults, "city": settings.weather_city})
     jokes = JokeTeller()
     hub.extra["settings"] = prefs.values
     hub.extra["weather"] = None
@@ -142,15 +142,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     log.exception("joke failed")
                 next_at = time.time() + prefs["joke_interval_min"] * 60 * random.uniform(0.8, 1.2)
 
+    weather_now = asyncio.Event()  # set to refresh right away (city changed)
+
+    async def refresh_weather() -> None:
+        geo = prefs["city_geo"]
+        where = (geo["lat"], geo["lon"], geo["name"]) if geo else \
+            (settings.weather_lat, settings.weather_lon, settings.weather_city)
+        try:
+            hub.extra["weather"] = await asyncio.to_thread(weather_api.fetch, *where)
+            await hub.notify(None)
+        except Exception as exc:
+            log.warning("weather unavailable (%s)", exc.__class__.__name__)
+
     async def weather_loop() -> None:
         while True:
             if prefs["weather"]:
-                try:
-                    hub.extra["weather"] = await asyncio.to_thread(weather_api.fetch)
-                    await hub.notify(None)
-                except Exception as exc:
-                    log.warning("weather unavailable (%s)", exc.__class__.__name__)
-            await asyncio.sleep(weather_api.REFRESH_SECONDS)
+                await refresh_weather()
+            weather_now.clear()
+            try:
+                await asyncio.wait_for(weather_now.wait(), weather_api.REFRESH_SECONDS)
+            except asyncio.TimeoutError:
+                pass
+
+    async def change_city(ws, query: str) -> None:
+        """Search the city first; only a city that exists replaces the current one."""
+        try:
+            geo = await asyncio.to_thread(weather_api.geocode, query)
+        except Exception as exc:
+            log.warning("city search failed (%s)", exc.__class__.__name__)
+            geo = None
+        if geo is None:
+            await ws.send_text(json.dumps({"type": "settings_result", "ok": False,
+                                           "detail": f"não encontrei a cidade \"{query}\""}))
+            return
+        prefs.update({"city": query, "city_geo": geo})
+        await ws.send_text(json.dumps({"type": "settings_result", "ok": True,
+                                       "detail": f"{geo['name']}, {geo['admin1'] or geo['country_code']}"}))
+        await hub.notify(None)
+        weather_now.set()
 
     hub.on_voice_reply = speak_reply
 
@@ -290,10 +319,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if kind == "touch" and hub.night:
                         await set_night(False, "touch")
                 if kind == "settings":
-                    if prefs.update(msg.get("values", {})):
+                    values = dict(msg.get("values", {}))
+                    values.pop("city_geo", None)  # only the hub sets it, after a search
+                    city = values.pop("city", None)
+                    if prefs.update(values):
                         if not prefs["weather"]:
                             hub.extra["weather"] = None
+                        else:
+                            weather_now.set()
                         await hub.notify(None)
+                    if city and " ".join(str(city).split()) != prefs["city"]:
+                        await change_city(ws, " ".join(str(city).split()))
                 elif kind == "joke_now":
                     asyncio.get_running_loop().create_task(tell_joke())
                 if kind == "decision":
