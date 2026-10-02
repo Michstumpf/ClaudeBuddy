@@ -13,6 +13,7 @@ DEFAULTS = {
     "joke_voice": True,        # ...also spoken aloud
     "joke_interval_min": 45,   # minimum minutes between jokes
     "weather": True,           # outside temperature on the face screen
+    "skin": "classic",         # classic: the whole mascot | eyes: only its eyes, for a mascot-shaped case
     "city": "Canoas",          # weather city as typed ("Porto Alegre", "São José, SC")
     # Where "city" resolved to (set by the hub after a successful search, not by
     # the user). None: use the built-in default (Canoas).
@@ -20,6 +21,7 @@ DEFAULTS = {
 }
 CITY_MAX_CHARS = 60
 JOKE_INTERVALS = (15, 30, 45, 60, 120)
+SKINS = ("classic", "eyes")
 
 
 class Prefs:
@@ -55,6 +57,9 @@ class Prefs:
                 continue
             if key == "city_geo":
                 if value is not None and not (isinstance(value, dict) and {"name", "lat", "lon"} <= value.keys()):
+                    continue
+            elif key == "skin":
+                if value not in SKINS:
                     continue
             elif key == "city":
                 value = " ".join(str(value or "").split())[:CITY_MAX_CHARS]

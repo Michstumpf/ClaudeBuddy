@@ -33,6 +33,7 @@ struct Settings {
   bool jokes = true, joke_voice = true, weather = true;
   int joke_interval_min = 45;
   std::string city = "Canoas";  // where the weather is from (the hub's search result)
+  bool eyes_skin = false;       // skin "eyes": only the eyes, for a mascot-shaped case
 };
 
 struct Event {

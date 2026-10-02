@@ -38,15 +38,21 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-lv_obj_t* pref_btn_[4];  // jokes, joke_voice, interval, weather
+lv_obj_t* pref_btn_[5];  // jokes, joke_voice, interval, weather, skin
 lv_obj_t* weather_label_;  // "Temperatura em <cidade>"
 
 lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_, *bar_right_;
 lv_obj_t *spin_row_ = nullptr, *glyph_ = nullptr, *verb_ = nullptr;
 lv_obj_t *fx_alert_, *fx_zzz_, *fx_spark_[2];
-std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_;
+std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_, big_eyes_;
+// Skin "eyes": only the eyes, big, on a body-colored screen (for a case shaped
+// like the mascot). Same eye shapes, 24 px units, sprite columns 3..14.
+constexpr int kBigUnit = 24, kBigX = 16, kBigY = 34;
+lv_obj_t* bigeyes_ = nullptr;
+bool eyes_skin_ = false;
 
 app::Mood mood_ = app::Mood::Off;
+bool redraw_ = true;  // redraw the face even if the mood is the same (skin changed, first frame)
 std::string link_status_;
 std::string done_session_;
 uint32_t done_at_ = 0, bubble_until_ = 0, frame_at_ = 0;
@@ -92,11 +98,38 @@ void build_sprite() {
 
 void draw_eyes(const sprite::Eyes& e) {
   for (auto* o : eyes_) lv_obj_delete(o);
+  for (auto* o : big_eyes_) lv_obj_delete(o);
   eyes_.clear();
+  big_eyes_.clear();
   for (int i = 0; i < e.count; i++) {
     const auto& r = e.rects[i];
     eyes_.push_back(box(sprite_, r.x * kUnit, r.y * kUnit, r.w * kUnit, r.h * kUnit, kBg));
+    big_eyes_.push_back(box(bigeyes_, (r.x - 3) * kBigUnit, r.y * kBigUnit, r.w * kBigUnit, r.h * kBigUnit, kBg));
   }
+}
+
+lv_color_t skin_background(app::Mood m) {
+  switch (m) {
+    case app::Mood::Wait: return kWarn;
+    case app::Mood::Done: return kOk;
+    case app::Mood::Off: return kOff;
+    case app::Mood::Sleep: return lv_color_hex(0xb0603f);
+    default: return kAccent;
+  }
+}
+
+void apply_skin_colors() {
+  if (eyes_skin_) {
+    lv_obj_set_style_bg_color(face_, skin_background(mood_), 0);
+    lv_obj_set_style_bg_opa(face_, LV_OPA_COVER, 0);
+  } else {
+    lv_obj_set_style_bg_opa(face_, LV_OPA_TRANSP, 0);
+  }
+  const lv_color_t text_color = eyes_skin_ ? kBar : kMuted;
+  lv_obj_set_style_text_color(label_, text_color, 0);
+  lv_obj_set_style_text_color(weather_, text_color, 0);
+  if (verb_) lv_obj_set_style_text_color(verb_, text_color, 0);
+  if (glyph_) lv_obj_set_style_text_color(glyph_, eyes_skin_ ? kBar : kAccent, 0);
 }
 
 const sprite::Eyes& eyes_for(app::Mood m) {
@@ -126,8 +159,8 @@ uint32_t verb_at_ = 0;
 const char* verb_text_ = kVerbs[0];
 
 void show_spinner(bool on) {
+  if (on) lv_label_set_text(label_, "");  // the spinner takes the label's place
   if (on && !glyph_) {
-    lv_label_set_text(label_, "");
     spin_row_ = lv_obj_create(face_);
     lv_obj_remove_style_all(spin_row_);
     lv_obj_set_size(spin_row_, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
@@ -148,16 +181,20 @@ void show_spinner(bool on) {
 void hide_bubble();
 
 void set_mood(const app::MoodView& v) {
-  if (v.mood != mood_) {
+  if (v.mood != mood_ || redraw_) {
+    redraw_ = false;
     mood_ = v.mood;
     draw_eyes(eyes_for(mood_));
     color_sprite(mood_ == app::Mood::Off ? kOff : kAccent);
     show_spinner(mood_ == app::Mood::Work);
     lv_obj_set_y(sprite_, kSpriteY);
-    if (mood_ == app::Mood::Sleep) lv_obj_remove_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN);
-    if (mood_ == app::Mood::Wait) lv_obj_remove_flag(fx_alert_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_alert_, LV_OBJ_FLAG_HIDDEN);
+    // The effects belong to the whole mascot; the eyes skin shows state by color.
+    const bool fx = !eyes_skin_;
+    if (fx && mood_ == app::Mood::Sleep) lv_obj_remove_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN);
+    if (fx && mood_ == app::Mood::Wait) lv_obj_remove_flag(fx_alert_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_alert_, LV_OBJ_FLAG_HIDDEN);
     for (auto* s : fx_spark_)
-      if (mood_ == app::Mood::Done) lv_obj_remove_flag(s, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s, LV_OBJ_FLAG_HIDDEN);
+      if (fx && mood_ == app::Mood::Done) lv_obj_remove_flag(s, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s, LV_OBJ_FLAG_HIDDEN);
+    apply_skin_colors();
   }
   if (mood_ != app::Mood::Work) lv_label_set_text(label_, v.label.c_str());
 }
@@ -165,10 +202,30 @@ void set_mood(const app::MoodView& v) {
 void hide_bubble() {
   bubble_until_ = 0;
   lv_obj_add_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_x(sprite_, kSpriteX);
+  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX);
+}
+
+void set_skin(bool eyes) {
+  if (eyes == eyes_skin_) return;
+  eyes_skin_ = eyes;
+  if (eyes) {
+    lv_obj_add_flag(sprite_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(bigeyes_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_width(bubble_, 296);
+    lv_obj_set_width(bubble_text_, 284);
+    lv_obj_align(bubble_, LV_ALIGN_BOTTOM_MID, 0, -44);  // under the eyes, not on one of them
+  } else {
+    lv_obj_remove_flag(sprite_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(bigeyes_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_width(bubble_, 170);
+    lv_obj_set_width(bubble_text_, 158);
+    lv_obj_align(bubble_, LV_ALIGN_TOP_RIGHT, -8, 8);
+  }
+  redraw_ = true;
 }
 
 void refresh() {
+  set_skin(state_.settings.eyes_skin);
   if (done_at_ && millis() - done_at_ > 8000) { done_at_ = 0; done_session_.clear(); }
   if (bubble_until_ && (state_.night || !connected_)) hide_bubble();
   app::MoodView v = app::mood(state_, connected_, false, done_session_);
@@ -204,6 +261,8 @@ void animate() {
   if (mood_ == app::Mood::Work) dy = step ? -kUnit / 2 : 0;
   if (mood_ == app::Mood::Wait || mood_ == app::Mood::Talk) dy = step ? -kUnit : 0;
   lv_obj_set_y(sprite_, kSpriteY + dy);
+  const int look[] = {0, 0, -1, -1, 0, 0, 1, 1};  // like the simulator's "look" animation
+  lv_obj_set_x(bigeyes_, kBigX + (mood_ == app::Mood::Work ? look[(frame_ / 3) % 8] * kBigUnit : 0));
   for (auto* l : legs_a_) lv_obj_set_y(l, 8 * kUnit - (mood_ == app::Mood::Work && step ? kUnit : 0));
   for (auto* l : legs_b_) lv_obj_set_y(l, 8 * kUnit - (mood_ == app::Mood::Work && !step ? kUnit : 0));
   if (bubble_until_ && millis() > bubble_until_) hide_bubble();
@@ -306,7 +365,8 @@ void build_list(lv_obj_t* v) {
 }
 
 void fill_list() {
-  lv_label_set_text_fmt(list_count_, "%u sessões", (unsigned)state_.sessions.size());
+  const unsigned n = state_.sessions.size();
+  lv_label_set_text_fmt(list_count_, n == 1 ? "%u sessão" : "%u sessões", n);
   lv_obj_clean(list_rows_);
   if (state_.sessions.empty()) {
     lv_obj_t* l = text(list_rows_, &buddy_font_11, lv_color_hex(0x777777));
@@ -427,6 +487,7 @@ void on_pref(lv_event_t* e) {
       break;
     }
     case 3: s.weather = !s.weather; break;
+    case 4: s.eyes_skin = !s.eyes_skin; break;
   }
   if (send_) send_(app::settings(s));
 }
@@ -440,9 +501,10 @@ void build_settings(lv_obj_t* v) {
   lv_obj_t* title = text(v, &buddy_font_13, kFg);
   lv_label_set_text(title, "⚙ Configurações");
   lv_obj_set_pos(title, 8, 8);
-  const char* names[] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas", "Temperatura lá fora"};
-  for (int i = 0; i < 4; i++) {
-    lv_obj_t* row = text_box(v, 8, 30 + i * 34, 304, 30);
+  const char* names[] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas", "Temperatura lá fora",
+                         "Visual"};
+  for (int i = 0; i < 5; i++) {
+    lv_obj_t* row = text_box(v, 8, 28 + i * 29, 304, 26);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_ver(row, 2, 0);
@@ -450,13 +512,13 @@ void build_settings(lv_obj_t* v) {
     lv_label_set_text(l, names[i]);
     if (i == 3) weather_label_ = l;
     pref_btn_[i] = button(row, "", kBtn, on_pref, reinterpret_cast<void*>(static_cast<uintptr_t>(i)));
-    lv_obj_set_size(pref_btn_[i], 92, 24);
+    lv_obj_set_size(pref_btn_[i], 96, 22);
     lv_obj_set_style_pad_ver(pref_btn_[i], 0, 0);
   }
   lv_obj_t* back = button(v, "◀ Voltar", kBtn, go, to(kList));
-  lv_obj_set_pos(back, 8, 172);
+  lv_obj_set_pos(back, 8, 180);
   lv_obj_t* now = button(v, "Contar uma piada agora", kBtnInfo, on_joke_now);
-  lv_obj_align(now, LV_ALIGN_TOP_RIGHT, -8, 172);
+  lv_obj_align(now, LV_ALIGN_TOP_RIGHT, -8, 180);
 }
 
 void fill_settings() {
@@ -468,6 +530,7 @@ void fill_settings() {
   char buf[16];
   snprintf(buf, sizeof(buf), "%d min", state_.settings.joke_interval_min);
   set_button_text(pref_btn_[2], buf);
+  set_button_text(pref_btn_[4], state_.settings.eyes_skin ? "Só os olhos" : "Clássico");
   // The city is changed from the web panel (no keyboard on a 2" screen).
   lv_label_set_text_fmt(weather_label_, "Temperatura em %s", state_.settings.city.c_str());
 }
@@ -513,6 +576,12 @@ void begin(Sender send) {
   build_approve(views_[kApprove]);
   build_settings(views_[kSettings]);
   build_sprite();
+  bigeyes_ = lv_obj_create(face_);
+  lv_obj_remove_style_all(bigeyes_);
+  lv_obj_set_pos(bigeyes_, kBigX, kBigY);
+  lv_obj_set_size(bigeyes_, 12 * kBigUnit, 5 * kBigUnit);
+  lv_obj_remove_flag(bigeyes_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(bigeyes_, LV_OBJ_FLAG_HIDDEN);
 
   label_ = text(face_, &buddy_font_11, kMuted);
   lv_obj_set_width(label_, 304);
@@ -557,7 +626,6 @@ void begin(Sender send) {
   lv_obj_align(bar_right_, LV_ALIGN_RIGHT_MID, -8, 0);
 
   for (auto* o : {fx_alert_, fx_zzz_, fx_spark_[0], fx_spark_[1]}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
-  mood_ = app::Mood::Idle;  // force the first set_mood() to draw everything
   refresh();
   show(kFace);
 }
@@ -577,7 +645,7 @@ void on_joke(const std::string& t) {
   if (view_ != kApprove) show(kFace);
   lv_label_set_text(bubble_text_, t.c_str());
   lv_obj_remove_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
-  lv_obj_set_x(sprite_, kSpriteX - 34);  // step aside for the bubble
+  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX - 34);  // step aside for the bubble
   bubble_until_ = millis() + 15000;
 }
 

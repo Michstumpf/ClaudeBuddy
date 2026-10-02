@@ -171,3 +171,10 @@ def test_example_config_is_valid_and_matches_defaults():
     assert example["stt"]["model"] == s.stt_model and example["tts"]["voice"] == s.tts_voice
     assert example["weather"]["city"] == s.weather_city
     assert {k: v for k, v in example["defaults"].items()} == {k: prefs_module.DEFAULTS[k] for k in example["defaults"]}
+
+
+def test_skin_pref():
+    p = Prefs()
+    assert p["skin"] == "classic"
+    assert p.update({"skin": "eyes"}) and p["skin"] == "eyes"
+    assert not p.update({"skin": "neon"}) and p["skin"] == "eyes"  # unknown skins are ignored

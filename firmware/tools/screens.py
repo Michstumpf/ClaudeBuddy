@@ -23,9 +23,9 @@ SETTINGS = {"jokes": True, "joke_voice": True, "joke_interval_min": 45, "weather
             "city": "Porto Alegre", "city_geo": {"name": "Porto Alegre", "lat": -30.03, "lon": -51.23}}
 
 
-def state(*sessions, pending=(), night=False, event=None):
+def state(*sessions, pending=(), night=False, event=None, settings=None):
     msg = {"type": "state", "sessions": list(sessions), "pending": list(pending), "devices": 1,
-           "night": night, "settings": SETTINGS, "weather": WEATHER}
+           "night": night, "settings": settings or SETTINGS, "weather": WEATHER}
     if event:
         msg["event"] = event
     return msg
@@ -71,8 +71,12 @@ CASES = [
     ("09-lista", [send(IDLE), tap(160, 100), expect('tx: {"type":"touch"}')], 1500),
     ("10-sessao", [tap(150, 49)], 1500),
     ("11-configuracoes", [tap(48, 193), tap(296, 18)], 1500),
-    ("12-config-tocou", [tap(258, 79),
+    ("12-config-tocou", [tap(258, 70),
                          expect('tx: {"type":"settings","values":{"jokes":true,"joke_voice":false')], 300),
+    ("13-olhos", [tap(48, 196), tap(40, 18), send(state(session("DataHub Sharing Chat", "idle"), settings={**SETTINGS, "skin": "eyes"}))], 1500),
+    ("14-olhos-trabalhando", [send(state(session("DataHub Sharing Chat", "working"), settings={**SETTINGS, "skin": "eyes"}))], 900),
+    ("15-olhos-esperando", [send(state(session("DataHub Sharing Chat", "waiting"), settings={**SETTINGS, "skin": "eyes"}))], 900),
+    ("16-olhos-noite", [send(state(session("DataHub Sharing Chat", "idle"), night=True, settings={**SETTINGS, "skin": "eyes"}))], 900),
 ]
 
 

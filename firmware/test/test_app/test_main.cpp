@@ -21,7 +21,8 @@ static const char* kState = R"({
   ],
   "devices": 2, "night": false,
   "settings": {"jokes": false, "joke_voice": true, "joke_interval_min": 30, "weather": true,
-               "city": "porto alegre", "city_geo": {"name": "Porto Alegre", "lat": -30.03, "lon": -51.23}},
+               "city": "porto alegre", "city_geo": {"name": "Porto Alegre", "lat": -30.03, "lon": -51.23},
+               "skin": "eyes"},
   "weather": {"place": "Canoas", "temp": 17, "min": 12, "max": 18, "text": "nublado", "icon": "☁", "updated_at": 1.0},
   "event": {"kind": "approval", "session": "DataHub Sharing Chat", "id": "p1"}
 })";
@@ -42,6 +43,7 @@ void test_parses_full_state() {
   TEST_ASSERT_FALSE(st.settings.jokes);
   TEST_ASSERT_EQUAL(30, st.settings.joke_interval_min);
   TEST_ASSERT_EQUAL_STRING("Porto Alegre", st.settings.city.c_str());
+  TEST_ASSERT_TRUE(st.settings.eyes_skin);
   TEST_ASSERT_TRUE(st.weather.valid);
   TEST_ASSERT_EQUAL(17, st.weather.temp);
   TEST_ASSERT_EQUAL_STRING("nublado", st.weather.text.c_str());
@@ -75,7 +77,7 @@ void test_outgoing_messages() {
   Settings s;
   s.joke_voice = false;
   TEST_ASSERT_EQUAL_STRING(
-      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45}})",
+      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic"}})",
       settings(s).c_str());
 }
 

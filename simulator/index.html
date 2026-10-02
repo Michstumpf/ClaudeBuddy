@@ -77,6 +77,26 @@
   .s-talk .fx-wave rect:nth-child(2n) { animation-delay: .12s; }
 
   .s-off .body rect, .s-off .legs rect { fill: #5a5550; }
+
+  /* ---- skin "eyes": only the eyes, for a case shaped like the mascot. The
+     screen takes the body's color, so it reads as the printed body's face;
+     the state shows in the background color. ---- */
+  .bigeyes { display: none; position: absolute; left: 16px; top: 34px; width: 288px; height: 120px; shape-rendering: crispEdges; }
+  .bigeyes rect { fill: var(--scr-bg); }
+  .skin-eyes .clawd { display: none; }
+  .skin-eyes .bigeyes { display: block; }
+  .skin-eyes .face { background: var(--accent); transition: background .3s; }
+  .skin-eyes .face.s-wait { background: var(--warn); }
+  .skin-eyes .face.s-done { background: var(--ok); }
+  .skin-eyes .face.s-off { background: #5a5550; }
+  .skin-eyes .face.s-sleep { background: #b0603f; }
+  .skin-eyes .label, .skin-eyes .chip { color: #1b1d22; font-weight: bold; }
+  .skin-eyes .label .glyph { color: #1b1d22; }
+  .skin-eyes .s-work .bigeyes .eyes { animation: look 2.4s steps(1) infinite; }
+  .skin-eyes .s-talk .bigeyes { animation: bob .35s steps(1) infinite; }
+  .skin-eyes .bubble { top: auto; bottom: 44px; left: 12px; right: 12px; width: auto; }
+  .skin-eyes .bubble::after { display: none; }
+  .skin-eyes .joking .clawd { transform: none; }
   .s-off .sprite { transform: translateY(1px); }
 
   @keyframes bob { 50% { transform: translateY(-0.5px); } }
@@ -99,6 +119,10 @@
   .opt { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; background: #181a1f; border-radius: 4px; }
   .opt .btn { flex: none; min-width: 92px; padding: 5px 6px; }
   .btn.on { background: #2f8a5b }
+  #v-settings .pad { gap: 4px; padding: 6px 8px; }
+  #v-settings .opt { padding: 2px 6px; }
+  #v-settings .opt .btn { padding: 4px 6px; }
+  #v-settings .btns .btn { padding: 7px 4px; }
   .list { position: absolute; inset: 30px 0 22px 0; overflow-y: auto; padding: 0 4px 4px; }
   .list-head { position: absolute; top: 4px; left: 4px; right: 4px; height: 22px; display: flex; gap: 6px; align-items: center; }
   .list-head .btn { flex: none; padding: 4px 10px; }
@@ -165,6 +189,7 @@
             </g>
             <g class="fx fx-wave"><rect x="-2.4" y="3.5" width="0.6" height="3"/><rect x="-1.3" y="3" width="0.6" height="4"/><rect x="18.7" y="3" width="0.6" height="4"/><rect x="19.8" y="3.5" width="0.6" height="3"/></g>
           </svg>
+          <svg class="bigeyes" viewBox="3 0 12 5" aria-hidden="true"><g class="eyes" id="cEyesBig"></g></svg>
           <div class="label" id="faceLabel">conectando…</div>
           <div class="chip" id="wx"></div>
           <div class="bubble" id="bubble"></div>
@@ -183,6 +208,7 @@
           <div class="opt"><span>Falar as piadas</span><button class="btn" data-pref="joke_voice"></button></div>
           <div class="opt"><span>Intervalo entre piadas</span><button class="btn" id="prefInterval"></button></div>
           <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
+          <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
           <div class="btns">
             <button class="btn" data-go="list">◀ Voltar</button>
             <button class="btn info" id="jokeNow">😄 Contar uma agora</button>
@@ -359,6 +385,8 @@ function render() {
   $("barLeft").textContent = connected ? `▶ ${counts.working || 0}  ⏸ ${counts.waiting || 0}  ✓ ${counts.done || 0}` : "offline";
   $("barRight").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  const skin = (state.settings && state.settings.skin) || "classic";
+  $("screen").classList.toggle("skin-eyes", skin === "eyes");
   const wx = state.weather;
   $("wx").textContent = wx ? `${wx.icon} ${wx.temp}° ${wx.place}` : "";
   if (view === "settings" && state.settings) {
@@ -367,11 +395,13 @@ function render() {
       b.textContent = on ? "Ligado" : "Desligado"; b.classList.toggle("on", on);
     });
     $("prefInterval").textContent = `${state.settings.joke_interval_min} min`;
+    $("prefSkin").textContent = state.settings.skin === "eyes" ? "Só os olhos" : "Clássico";
     const geo = state.settings.city_geo;
     $("weatherLabel").textContent = `Temperatura em ${geo ? geo.name : (state.settings.city || "Canoas")}`;
   }
   if (view === "list") {
-    $("listCount").textContent = `${state.sessions.length} sessões`;
+    const n = state.sessions.length;
+    $("listCount").textContent = `${n} ${n === 1 ? "sessão" : "sessões"}`;
     $("list").innerHTML = state.sessions.length ? "" : '<div style="padding:10px;color:#777">nenhuma sessão ainda</div>';
     for (const s of state.sessions) {
       const row = document.createElement("div");
@@ -462,6 +492,11 @@ $("prefInterval").onclick = (e) => {
   e.stopPropagation();
   const now = state.settings ? state.settings.joke_interval_min : 45;
   send({ type: "settings", values: { joke_interval_min: INTERVALS[(INTERVALS.indexOf(now) + 1) % INTERVALS.length] } });
+};
+$("prefSkin").onclick = (e) => {
+  e.stopPropagation();
+  const next = state.settings && state.settings.skin === "eyes" ? "classic" : "eyes";
+  send({ type: "settings", values: { skin: next } });
 };
 $("jokeNow").onclick = (e) => { e.stopPropagation(); send({ type: "joke_now" }); show("face"); };
 
@@ -558,7 +593,8 @@ function rects(el, list) {
     return r;
   }));
 }
-function drawEyes(m) { rects($("cEyes"), EYES[EYES_FOR[m] || "open"]); }
+function setEyes(shape) { rects($("cEyes"), shape); rects($("cEyesBig"), shape); }
+function drawEyes(m) { setEyes(EYES[EYES_FOR[m] || "open"]); }
 // One rect per horizontal run keeps the SVG small and the edges seamless.
 rects($("cBody"), BODY.flatMap((row, y) => [...row.matchAll(/#+/g)].map(r => [r.index, y, r[0].length, 1])));
 rects($("cLegsA"), LEGS_A.map(([x, y]) => [x, y, 1, 2]));
@@ -611,7 +647,7 @@ function startSpinner() {
 // ---------- idle blinking ----------
 setInterval(() => {
   if (!$("face").classList.contains("s-idle")) return;
-  rects($("cEyes"), EYES.shut);
+  setEyes(EYES.shut);
   setTimeout(() => { if ($("face").classList.contains("s-idle")) drawEyes("s-idle"); }, 140);
 }, 3500);
 
