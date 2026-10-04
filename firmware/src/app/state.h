@@ -52,6 +52,9 @@ struct State {
   Pomodoro pomodoro;
   std::string focus;  // why the Buddy is in focus mode ("pomodoro", "reunião"), "" if not
   int github_reviews = 0, github_failing = 0;  // PRs awaiting review, your PRs with red CI
+  bool in_meeting = false;
+  std::string next_meeting;     // title of the next meeting today, "" if none
+  int next_meeting_in = -1;     // seconds until it starts, when the hub sent it
   std::vector<Approval> pending;
   int devices = 0;
   bool night = false;

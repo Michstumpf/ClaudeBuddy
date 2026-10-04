@@ -683,6 +683,9 @@ void begin(Sender send) {
   lv_obj_align(bar_left_, LV_ALIGN_LEFT_MID, 8, 0);
   bar_mid_ = text(bar, &buddy_font_11, kAccent);
   lv_label_set_text(bar_mid_, "");
+  lv_obj_set_width(bar_mid_, 130);
+  lv_label_set_long_mode(bar_mid_, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_text_align(bar_mid_, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(bar_mid_, LV_ALIGN_CENTER, 10, 0);
   // Battery: an outlined cell with a fill proportional to the charge, and the
   // percentage beside it. Hidden on boards without a battery.
@@ -783,7 +786,14 @@ void loop() {
     last = millis();
     refresh();
     if (state_.pomodoro.phase.empty()) {
-      lv_label_set_text(bar_mid_, "");
+      // No pomodoro: "em reunião", or the next meeting within the hour.
+      const int left = state_.next_meeting_in - static_cast<int>((millis() - pomo_at_) / 1000);
+      if (state_.in_meeting)
+        lv_label_set_text(bar_mid_, "em reunião");
+      else if (!state_.next_meeting.empty() && state_.next_meeting_in >= 0 && left <= 3600)
+        lv_label_set_text_fmt(bar_mid_, "%s em %d min", state_.next_meeting.c_str(), left > 60 ? left / 60 : 1);
+      else
+        lv_label_set_text(bar_mid_, "");
     } else {
       int left = pomo_secs_ - static_cast<int>((millis() - pomo_at_) / 1000);
       if (left < 0) left = 0;

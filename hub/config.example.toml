@@ -28,6 +28,10 @@ city = "Canoas"              # default city for a fresh install
 latitude = -29.92            # used when the city search is unavailable
 longitude = -51.18
 
+[calendar]                   # Google Agenda → configurações da agenda → "Endereço secreto no formato iCal"
+ics_url = ""                 # secret! better in ~/.config/claude-buddy/calendar_url (BUDDY_CALENDAR_URL)
+email = ""                   # your address in the invites, to skip meetings you declined (BUDDY_CALENDAR_EMAIL)
+
 [defaults]                   # first-run choices on the settings screen
 jokes = true
 joke_voice = true
@@ -38,3 +42,4 @@ battery = true               # show the battery indicator (boards with a battery
 long_task_min = 15           # notice when a session works this long: 0 (off), 10, 15, 30 or 60
 daily_summary = true         # say the day's summary at "boa noite"
 github = true                # PR review requests / failing CI notices, through the gh CLI logged in on this machine
+calendar = true              # meeting reminders + focus mode during meetings

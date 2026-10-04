@@ -91,6 +91,8 @@ CASES = [
                            send({**state(session("HIPAA Compliance", "working")),
                                  "pomodoro": {"phase": "focus", "ends_in": 1453, "rounds": 0}, "focus": "pomodoro"}),
                            send({"type": "notice", "kind": "long_task", "text": "HIPAA Compliance está trabalhando há 15 minutos."})], 1200),
+    ("22-proxima-reuniao", [send({**state(session("HIPAA Compliance", "idle")),
+                                  "calendar": {"now": None, "next": {"title": "Daily", "starts_in": 1500}}})], 1500),
 ]
 
 

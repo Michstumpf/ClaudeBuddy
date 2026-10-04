@@ -77,6 +77,12 @@ Incoming parse(const std::string& json) {
     st.focus = str(doc["focus"]);
     st.github_reviews = doc["github"]["reviews"] | 0;
     st.github_failing = doc["github"]["failing"] | 0;
+    JsonObjectConst cal = doc["calendar"];
+    if (!cal.isNull()) {
+      st.in_meeting = cal["now"].is<const char*>();
+      st.next_meeting = str(cal["next"]["title"]);
+      st.next_meeting_in = cal["next"]["starts_in"] | -1;
+    }
     JsonObjectConst ev = doc["event"];
     if (!ev.isNull()) {
       st.event.kind = str(ev["kind"]);

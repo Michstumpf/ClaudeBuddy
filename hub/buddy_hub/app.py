@@ -33,7 +33,7 @@ from .battery import BatteryWatch, notify_desktop
 from . import intents
 from .claude_usage import ClaudeUsage
 from .daystats import DayStats
-from . import github_watch
+from . import calendar_watch, github_watch
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
 from .pomodoro import Pomodoro
@@ -74,6 +74,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     github = github_watch.GitHubWatch()
     hub.extra["github"] = None  # {"reviews": n, "failing": n}
     deferred: list[tuple[str, str]] = []  # notices held back while in focus mode
+    calendar = calendar_watch.CalendarWatch()
+    hub.extra["calendar"] = None  # {"now": title | None, "next": {"title", "starts_in"} | None}
     working_since: dict[str, float] = {}  # session id -> when it started working
     long_warned: set[str] = set()
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
@@ -146,7 +148,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.to_thread(play_locally, clips[message["id"]])  # no Buddy: say it on the hub
 
     def refresh_focus() -> None:
-        hub.extra["focus"] = "pomodoro" if pomodoro.focusing else None
+        in_meeting = (hub.extra.get("calendar") or {}).get("now")
+        hub.extra["focus"] = "reunião" if in_meeting else "pomodoro" if pomodoro.focusing else None
         hub.extra["pomodoro"] = pomodoro.public()
 
     async def pomodoro_command(action: str) -> None:
@@ -234,6 +237,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             text, kind = deferred.pop(0)
             await send_notice(text, kind)
             await asyncio.sleep(16)  # one bubble at a time
+
+    async def calendar_loop() -> None:
+        url = calendar_watch.load_url(settings.calendar_url)
+        if not url:
+            return
+        fetched_at = 0.0
+        while True:
+            now_ts = time.time()
+            if prefs["calendar"] and now_ts - fetched_at > calendar_watch.POLL_SECONDS:
+                try:
+                    from datetime import datetime
+
+                    ics = await asyncio.to_thread(calendar_watch.fetch_ics, url)
+                    now = datetime.now().astimezone()
+                    calendar.upcoming = await asyncio.to_thread(calendar_watch.events, ics, now, 24, settings.calendar_email)
+                    fetched_at = now_ts
+                except Exception as exc:
+                    log.warning("calendar fetch failed (%s)", exc.__class__.__name__)
+            if prefs["calendar"]:
+                from datetime import datetime
+
+                notices, public = calendar.tick(datetime.now().astimezone())
+                if public != hub.extra.get("calendar"):
+                    hub.extra["calendar"] = public
+                    refresh_focus()
+                    await hub.notify(None)
+                for text in notices:
+                    await send_notice(text, "calendar", speak=True)
+            await flush_deferred()
+            await asyncio.sleep(30)
 
     async def claude_usage_loop() -> None:
         while True:
@@ -369,7 +402,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tasks = [asyncio.create_task(housekeeping())]
         if settings.background_extras:
             tasks += [asyncio.create_task(joke_loop()), asyncio.create_task(weather_loop()),
-                      asyncio.create_task(claude_usage_loop()), asyncio.create_task(github_loop())]
+                      asyncio.create_task(claude_usage_loop()), asyncio.create_task(github_loop()),
+                      asyncio.create_task(calendar_loop())]
         yield
         for task in tasks:
             task.cancel()

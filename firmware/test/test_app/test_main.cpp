@@ -25,6 +25,7 @@ static const char* kState = R"({
                "skin": "eyes", "battery": false},
   "pomodoro": {"phase": "focus", "ends_in": 1453, "rounds": 0}, "focus": "pomodoro",
   "github": {"reviews": 4, "failing": 1},
+  "calendar": {"now": null, "next": {"title": "Daily", "starts_in": 600}},
   "weather": {"place": "Canoas", "temp": 17, "min": 12, "max": 18, "text": "nublado", "icon": "☁", "updated_at": 1.0},
   "event": {"kind": "approval", "session": "DataHub Sharing Chat", "id": "p1"}
 })";
@@ -56,6 +57,9 @@ void test_parses_full_state() {
   TEST_ASSERT_EQUAL_STRING("pomodoro", st.focus.c_str());
   TEST_ASSERT_EQUAL(4, st.github_reviews);
   TEST_ASSERT_EQUAL(1, st.github_failing);
+  TEST_ASSERT_FALSE(st.in_meeting);
+  TEST_ASSERT_EQUAL_STRING("Daily", st.next_meeting.c_str());
+  TEST_ASSERT_EQUAL(600, st.next_meeting_in);
 }
 
 void test_old_hub_without_new_fields() {

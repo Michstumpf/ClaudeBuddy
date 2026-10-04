@@ -90,6 +90,10 @@ class Settings:
     weather_city: str = "Canoas"
     weather_lat: float = -29.92
     weather_lon: float = -51.18
+    # [calendar]: secret iCal URL (or ~/.config/claude-buddy/calendar_url) and your
+    # email, to skip meetings you declined.
+    calendar_url: str = ""
+    calendar_email: str = ""
 
     @classmethod
     def from_env(cls, config: dict | None = None) -> "Settings":
@@ -111,6 +115,8 @@ class Settings:
             weather_city=c.get("weather", "city", "BUDDY_WEATHER_PLACE", "Canoas"),
             weather_lat=c.get("weather", "latitude", "BUDDY_WEATHER_LAT", -29.92, float),
             weather_lon=c.get("weather", "longitude", "BUDDY_WEATHER_LON", -51.18, float),
+            calendar_url=c.get("calendar", "ics_url", "BUDDY_CALENDAR_URL", ""),
+            calendar_email=c.get("calendar", "email", "BUDDY_CALENDAR_EMAIL", ""),
         )
 
 
