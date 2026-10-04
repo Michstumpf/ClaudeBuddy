@@ -120,6 +120,7 @@
   .opt .btn { flex: none; min-width: 92px; padding: 5px 6px; }
   .btn.on { background: #2f8a5b }
   #v-settings .pad { gap: 4px; padding: 6px 8px; }
+  #v-settings .optlist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
   #v-settings .opt { padding: 2px 6px; }
   #v-settings .opt .btn { padding: 4px 6px; }
   #v-settings .btns .btn { padding: 7px 4px; }
@@ -212,11 +213,14 @@
       <div class="view" id="v-settings">
         <div class="pad">
           <div class="title">⚙ Configurações</div>
+          <div class="optlist">
           <div class="opt"><span>Piadas de vez em quando</span><button class="btn" data-pref="jokes"></button></div>
           <div class="opt"><span>Falar as piadas</span><button class="btn" data-pref="joke_voice"></button></div>
           <div class="opt"><span>Intervalo entre piadas</span><button class="btn" id="prefInterval"></button></div>
           <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
           <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
+          <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
+          </div>
           <div class="btns">
             <button class="btn" data-go="list">◀ Voltar</button>
             <button class="btn info" id="jokeNow">😄 Contar uma agora</button>
@@ -403,7 +407,8 @@ function render() {
   $("barRight").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const b = state.battery;
-  $("batt").classList.toggle("hide", !b);
+  const showBattery = !state.settings || state.settings.battery !== false;
+  $("batt").classList.toggle("hide", !b || !showBattery);
   if (b) {
     $("battPct").textContent = `${b.percent}%`;
     $("battFill").style.width = `${Math.round(18 * b.percent / 100)}px`;

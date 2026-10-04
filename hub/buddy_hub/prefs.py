@@ -14,6 +14,7 @@ DEFAULTS = {
     "joke_interval_min": 45,   # minimum minutes between jokes
     "weather": True,           # outside temperature on the face screen
     "skin": "classic",         # classic: the whole mascot | eyes: only its eyes, for a mascot-shaped case
+    "battery": True,           # battery indicator in the status bar (boards with a battery)
     "city": "Canoas",          # weather city as typed ("Porto Alegre", "São José, SC")
     # Where "city" resolved to (set by the hub after a successful search, not by
     # the user). None: use the built-in default (Canoas).

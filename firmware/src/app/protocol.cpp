@@ -59,6 +59,7 @@ Incoming parse(const std::string& json) {
       if (city.empty()) city = str(set["city"]);
       if (!city.empty()) st.settings.city = city;
       st.settings.eyes_skin = str(set["skin"]) == "eyes";
+      st.settings.show_battery = set["battery"] | true;
     }
     JsonObjectConst w = doc["weather"];
     if (!w.isNull()) {
@@ -123,6 +124,7 @@ std::string settings(const Settings& s) {
   v["weather"] = s.weather;
   v["joke_interval_min"] = s.joke_interval_min;
   v["skin"] = s.eyes_skin ? "eyes" : "classic";
+  v["battery"] = s.show_battery;
   return dump(doc);
 }
 

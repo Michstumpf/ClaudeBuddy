@@ -17,6 +17,8 @@ static void flush(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map) {
 }
 
 static int tap_x = 0, tap_y = 0, tap_reads = 0;
+static int drag_x1, drag_y1, drag_x2, drag_y2, drag_step = -1;
+static constexpr int kDragSteps = 12;
 
 void inject_tap(int x, int y) {
   tap_x = x;
@@ -24,9 +26,20 @@ void inject_tap(int x, int y) {
   tap_reads = 3;  // pressed for 2 reads, then released: a click
 }
 
+void inject_drag(int x1, int y1, int x2, int y2) {
+  drag_x1 = x1, drag_y1 = y1, drag_x2 = x2, drag_y2 = y2;
+  drag_step = 0;
+}
+
 static void read_touch(lv_indev_t*, lv_indev_data_t* data) {
   int x, y;
-  if (tap_reads > 0) {
+  if (drag_step >= 0) {
+    const int k = drag_step > kDragSteps ? kDragSteps : drag_step;
+    data->point.x = drag_x1 + (drag_x2 - drag_x1) * k / kDragSteps;
+    data->point.y = drag_y1 + (drag_y2 - drag_y1) * k / kDragSteps;
+    data->state = drag_step++ <= kDragSteps ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    if (data->state == LV_INDEV_STATE_RELEASED) drag_step = -1;
+  } else if (tap_reads > 0) {
     data->point.x = tap_x;
     data->point.y = tap_y;
     data->state = --tap_reads > 0 ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;

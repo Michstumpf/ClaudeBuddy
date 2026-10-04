@@ -34,6 +34,7 @@ struct Settings {
   int joke_interval_min = 45;
   std::string city = "Canoas";  // where the weather is from (the hub's search result)
   bool eyes_skin = false;       // skin "eyes": only the eyes, for a mascot-shaped case
+  bool show_battery = true;     // battery indicator in the status bar
 };
 
 struct Event {

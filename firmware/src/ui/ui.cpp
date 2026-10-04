@@ -38,7 +38,8 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-lv_obj_t* pref_btn_[5];  // jokes, joke_voice, interval, weather, skin
+constexpr int kPrefs = 6;
+lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery
 lv_obj_t* weather_label_;  // "Temperatura em <cidade>"
 
 lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_, *bar_right_;
@@ -493,6 +494,7 @@ void on_pref(lv_event_t* e) {
     }
     case 3: s.weather = !s.weather; break;
     case 4: s.eyes_skin = !s.eyes_skin; break;
+    case 5: s.show_battery = !s.show_battery; break;
   }
   if (send_) send_(app::settings(s));
 }
@@ -506,10 +508,19 @@ void build_settings(lv_obj_t* v) {
   lv_obj_t* title = text(v, &buddy_font_13, kFg);
   lv_label_set_text(title, "⚙ Configurações");
   lv_obj_set_pos(title, 8, 8);
-  const char* names[] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas", "Temperatura lá fora",
-                         "Visual"};
-  for (int i = 0; i < 5; i++) {
-    lv_obj_t* row = text_box(v, 8, 28 + i * 29, 304, 26);
+  const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
+                               "Temperatura lá fora", "Visual", "Indicador de bateria"};
+  // The options scroll; Voltar / Contar stay put at the bottom.
+  lv_obj_t* list = lv_obj_create(v);
+  lv_obj_remove_style_all(list);
+  lv_obj_set_pos(list, 8, 28);
+  lv_obj_set_size(list, 304, 146);
+  lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(list, 3, 0);
+  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ACTIVE);
+  for (int i = 0; i < kPrefs; i++) {
+    lv_obj_t* row = text_box(list, 0, 0, 304, 26);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_ver(row, 2, 0);
@@ -527,8 +538,9 @@ void build_settings(lv_obj_t* v) {
 }
 
 void fill_settings() {
-  const bool on[] = {state_.settings.jokes, state_.settings.joke_voice, false, state_.settings.weather};
-  for (int i : {0, 1, 3}) {
+  const bool on[kPrefs] = {state_.settings.jokes, state_.settings.joke_voice, false, state_.settings.weather, false,
+                           state_.settings.show_battery};
+  for (int i : {0, 1, 3, 5}) {
     set_button_text(pref_btn_[i], on[i] ? "Ligado" : "Desligado");
     lv_obj_set_style_bg_color(pref_btn_[i], on[i] ? kBtnOk : kBtn, 0);
   }
@@ -653,7 +665,9 @@ void begin(Sender send) {
 }
 
 void apply(const app::State& state, bool connected) {
+  const bool battery_shown = state_.settings.show_battery;
   state_ = state;
+  if (state_.settings.show_battery != battery_shown) set_battery(battery_, charging_);
   connected_ = connected;
   if (state.event.kind == "done") {
     done_session_ = state.event.session;
@@ -690,7 +704,7 @@ void set_battery(int percent, bool charging) {
   battery_ = percent;
   charging_ = charging;
   auto* cap = static_cast<lv_obj_t*>(lv_obj_get_user_data(batt_shell_));
-  if (percent < 0) {
+  if (percent < 0 || !state_.settings.show_battery) {
     lv_label_set_text(bar_right_, "");
     lv_obj_add_flag(batt_shell_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cap, LV_OBJ_FLAG_HIDDEN);

@@ -83,6 +83,9 @@ CASES = [
     ("16-olhos-noite", [send(state(session("DataHub Sharing Chat", "idle"), night=True, settings={**SETTINGS, "skin": "eyes"}))], 900),
     ("17-bateria-carregando", [send(state(session("DataHub Sharing Chat", "idle"))), battery(80, True)], 900),
     ("18-bateria-fraca", [battery(8)], 900),
+    ("19-bateria-oculta", [send(state(session("DataHub Sharing Chat", "idle"), settings={**SETTINGS, "battery": False}))], 900),
+    ("20-config-rolada", [send(state(session("DataHub Sharing Chat", "idle"))), tap(160, 100), tap(296, 18),
+                          ("drag", 160, 160, 160, 60)], 1500),
 ]
 
 
@@ -96,6 +99,12 @@ def build_scenario() -> None:
                 # json.dumps escapes non-ASCII (é...) exactly like the hub does
                 steps.append("  - write-serial: |\n      " + json.dumps(m, separators=(",", ":")))
                 steps.append(f'  - wait-serial: "rx: {"joke" if m["type"] == "joke" else "state"}"')
+            elif action[0] == "drag":
+                _, x1, y1, x2, y2 = action
+                steps.append("  - write-serial: |\n      " + json.dumps(
+                    {"type": "_drag", "x1": x1, "y1": y1, "x2": x2, "y2": y2}, separators=(",", ":")))
+                steps.append('  - wait-serial: "rx: drag"')
+                steps.append("  - delay: 800ms")
             elif action[0] == "battery":
                 steps.append("  - write-serial: |\n      " + json.dumps(
                     {"type": "_battery", "percent": action[1], "charging": action[2]}, separators=(",", ":")))

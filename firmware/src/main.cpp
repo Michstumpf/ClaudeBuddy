@@ -17,13 +17,18 @@
 //                                  save WiFi + hub to flash and restart
 static bool local_command(const std::string& json) {
   if (json.find("\"_tap\"") == std::string::npos && json.find("\"_config\"") == std::string::npos &&
-      json.find("\"_battery\"") == std::string::npos)
+      json.find("\"_battery\"") == std::string::npos && json.find("\"_drag\"") == std::string::npos)
     return false;
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
   if (doc["type"] == "_tap") {
     hal::inject_tap(doc["x"] | 0, doc["y"] | 0);
     Serial.printf("rx: tap %d,%d\n", (int)(doc["x"] | 0), (int)(doc["y"] | 0));
+    return true;
+  }
+  if (doc["type"] == "_drag") {
+    hal::inject_drag(doc["x1"] | 0, doc["y1"] | 0, doc["x2"] | 0, doc["y2"] | 0);
+    Serial.println("rx: drag");
     return true;
   }
   if (doc["type"] == "_battery") {
