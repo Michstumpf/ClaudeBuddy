@@ -94,6 +94,10 @@ class Settings:
     # email, to skip meetings you declined.
     calendar_url: str = ""
     calendar_email: str = ""
+    # [jira]: Atlassian site ("yourco.atlassian.net") and login email; the API
+    # token goes in ~/.config/claude-buddy/jira_token.
+    jira_site: str = ""
+    jira_email: str = ""
 
     @classmethod
     def from_env(cls, config: dict | None = None) -> "Settings":
@@ -117,6 +121,8 @@ class Settings:
             weather_lon=c.get("weather", "longitude", "BUDDY_WEATHER_LON", -51.18, float),
             calendar_url=c.get("calendar", "ics_url", "BUDDY_CALENDAR_URL", ""),
             calendar_email=c.get("calendar", "email", "BUDDY_CALENDAR_EMAIL", ""),
+            jira_site=c.get("jira", "site", "BUDDY_JIRA_SITE", ""),
+            jira_email=c.get("jira", "email", "BUDDY_JIRA_EMAIL", ""),
         )
 
 

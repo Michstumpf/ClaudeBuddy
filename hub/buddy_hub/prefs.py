@@ -18,6 +18,8 @@ DEFAULTS = {
     "long_task_min": 15,       # notice when a session works this long (0 = off)
     "daily_summary": True,     # say the day's summary at "boa noite"
     "calendar": True,          # meeting reminders and focus mode during meetings (needs the iCal URL)
+    "jira": True,              # ticket notices (needs [jira] site/email + jira_token)
+    "slack": True,             # mention notices (needs slack_token)
     "github": True,            # notices for PRs awaiting your review and your PRs with failing CI (gh CLI)
     "city": "Canoas",          # weather city as typed ("Porto Alegre", "São José, SC")
     # Where "city" resolved to (set by the hub after a successful search, not by

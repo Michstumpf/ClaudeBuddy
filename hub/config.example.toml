@@ -32,6 +32,11 @@ longitude = -51.18
 ics_url = ""                 # secret! better in ~/.config/claude-buddy/calendar_url (BUDDY_CALENDAR_URL)
 email = ""                   # your address in the invites, to skip meetings you declined (BUDDY_CALENDAR_EMAIL)
 
+[jira]                       # ticket notices; API token in ~/.config/claude-buddy/jira_token
+site = ""                    # e.g. "yourco.atlassian.net" (BUDDY_JIRA_SITE)
+email = ""                   # your Atlassian login (BUDDY_JIRA_EMAIL)
+# Slack mention notices: a user token (xoxp-…, scope search:read) in ~/.config/claude-buddy/slack_token.
+
 [defaults]                   # first-run choices on the settings screen
 jokes = true
 joke_voice = true
@@ -43,3 +48,5 @@ long_task_min = 15           # notice when a session works this long: 0 (off), 1
 daily_summary = true         # say the day's summary at "boa noite"
 github = true                # PR review requests / failing CI notices, through the gh CLI logged in on this machine
 calendar = true              # meeting reminders + focus mode during meetings
+jira = true                  # ticket notices (once [jira] and the token are set)
+slack = true                 # mention notices (once the token is set)
