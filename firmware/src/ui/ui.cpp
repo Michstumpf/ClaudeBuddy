@@ -371,7 +371,9 @@ void build_list(lv_obj_t* v) {
   button(v, "◀ Buddy", kBtn, go, to(kFace));
   lv_obj_set_pos(lv_obj_get_child(v, -1), 4, 4);
   list_count_ = text(v, &buddy_font_11, lv_color_hex(0x7d776f));
-  lv_obj_set_pos(list_count_, 96, 12);
+  lv_obj_set_pos(list_count_, 86, 12);
+  lv_obj_set_width(list_count_, 190);
+  lv_label_set_long_mode(list_count_, LV_LABEL_LONG_DOT);
   button(v, "⚙", kBtn, go, to(kSettings));
   lv_obj_align(lv_obj_get_child(v, -1), LV_ALIGN_TOP_RIGHT, -4, 4);
   list_rows_ = lv_obj_create(v);
@@ -385,7 +387,11 @@ void build_list(lv_obj_t* v) {
 
 void fill_list() {
   const unsigned n = state_.sessions.size();
-  lv_label_set_text_fmt(list_count_, n == 1 ? "%u sessão" : "%u sessões", n);
+  std::string head = std::to_string(n) + (n == 1 ? " sessão" : " sessões");
+  // GitHub: PRs awaiting your review, and your PRs with failing CI (short: a 2" screen).
+  if (state_.github_reviews) head += " · " + std::to_string(state_.github_reviews) + (state_.github_reviews == 1 ? " PR" : " PRs");
+  if (state_.github_failing) head += " · " + std::to_string(state_.github_failing) + " CI ✕";
+  lv_label_set_text(list_count_, head.c_str());
   lv_obj_clean(list_rows_);
   if (state_.sessions.empty()) {
     lv_obj_t* l = text(list_rows_, &buddy_font_11, lv_color_hex(0x777777));

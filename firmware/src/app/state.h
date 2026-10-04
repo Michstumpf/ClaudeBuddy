@@ -51,6 +51,7 @@ struct State {
   std::vector<Session> sessions;
   Pomodoro pomodoro;
   std::string focus;  // why the Buddy is in focus mode ("pomodoro", "reunião"), "" if not
+  int github_reviews = 0, github_failing = 0;  // PRs awaiting review, your PRs with red CI
   std::vector<Approval> pending;
   int devices = 0;
   bool night = false;

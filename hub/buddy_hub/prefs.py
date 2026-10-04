@@ -17,6 +17,7 @@ DEFAULTS = {
     "battery": True,           # battery indicator in the status bar (boards with a battery)
     "long_task_min": 15,       # notice when a session works this long (0 = off)
     "daily_summary": True,     # say the day's summary at "boa noite"
+    "github": True,            # notices for PRs awaiting your review and your PRs with failing CI (gh CLI)
     "city": "Canoas",          # weather city as typed ("Porto Alegre", "São José, SC")
     # Where "city" resolved to (set by the hub after a successful search, not by
     # the user). None: use the built-in default (Canoas).

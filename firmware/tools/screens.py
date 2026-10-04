@@ -53,6 +53,7 @@ def expect(text):
     return ("expect", text)
 
 
+IDLE_GH = {"github": {"reviews": 4, "failing": 1}}
 IDLE = state(session("DataHub Sharing Chat", "idle", last_message="Feito: os 38 testes passaram e o pull request está pronto para revisão."),
              session("HIPAA Compliance", "working"), session("git-d6", "offline"))
 APPROVAL = {"id": "p1", "session_name": "DataHub Sharing Chat", "tool_name": "Bash",
@@ -72,7 +73,7 @@ CASES = [
     ("07-piada", [send(state(session("HIPAA Compliance", "idle"))),
                   send({"type": "joke", "text": "Qual é a diferença entre uma reunião e um café? O café eventualmente termina!"})], 600),
     ("08-noite", [send(state(session("HIPAA Compliance", "idle"), night=True))], 500),
-    ("09-lista", [send(IDLE), tap(160, 100), expect('tx: {"type":"touch"}')], 1500),
+    ("09-lista", [send({**IDLE, **IDLE_GH}), tap(160, 100), expect('tx: {"type":"touch"}')], 1500),
     ("10-sessao", [tap(150, 49)], 1500),
     ("11-configuracoes", [tap(48, 193), tap(296, 18)], 1500),
     ("12-config-tocou", [tap(258, 70),

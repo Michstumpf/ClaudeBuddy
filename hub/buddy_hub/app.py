@@ -33,6 +33,7 @@ from .battery import BatteryWatch, notify_desktop
 from . import intents
 from .claude_usage import ClaudeUsage
 from .daystats import DayStats
+from . import github_watch
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
 from .pomodoro import Pomodoro
@@ -70,6 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     stats = DayStats()
     claude_usage = ClaudeUsage()
     hub.extra["claude_month"] = None  # API-equivalent estimate from local transcripts
+    github = github_watch.GitHubWatch()
+    hub.extra["github"] = None  # {"reviews": n, "failing": n}
+    deferred: list[tuple[str, str]] = []  # notices held back while in focus mode
     working_since: dict[str, float] = {}  # session id -> when it started working
     long_warned: set[str] = set()
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
@@ -211,6 +215,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception as exc:
             log.warning("weather unavailable (%s)", exc.__class__.__name__)
 
+    async def github_loop() -> None:
+        while True:
+            if prefs["github"] and github_watch.available():
+                try:
+                    for text in github.update(await asyncio.to_thread(github_watch.fetch)):
+                        deferred.append((text, "github"))
+                    hub.extra["github"] = github.counts()
+                    await hub.notify(None)
+                except Exception as exc:
+                    log.warning("github poll failed (%s)", exc.__class__.__name__)
+            await flush_deferred()
+            await asyncio.sleep(github_watch.POLL_SECONDS)
+
+    async def flush_deferred() -> None:
+        """Notices that shouldn't interrupt focus (pomodoro, meeting) wait for it to end."""
+        while deferred and not hub.extra.get("focus") and not hub.night:
+            text, kind = deferred.pop(0)
+            await send_notice(text, kind)
+            await asyncio.sleep(16)  # one bubble at a time
+
     async def claude_usage_loop() -> None:
         while True:
             try:
@@ -345,7 +369,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tasks = [asyncio.create_task(housekeeping())]
         if settings.background_extras:
             tasks += [asyncio.create_task(joke_loop()), asyncio.create_task(weather_loop()),
-                      asyncio.create_task(claude_usage_loop())]
+                      asyncio.create_task(claude_usage_loop()), asyncio.create_task(github_loop())]
         yield
         for task in tasks:
             task.cancel()

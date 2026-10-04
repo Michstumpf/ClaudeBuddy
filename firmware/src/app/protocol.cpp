@@ -75,6 +75,8 @@ Incoming parse(const std::string& json) {
       st.pomodoro.ends_in = pomo["ends_in"] | 0;
     }
     st.focus = str(doc["focus"]);
+    st.github_reviews = doc["github"]["reviews"] | 0;
+    st.github_failing = doc["github"]["failing"] | 0;
     JsonObjectConst ev = doc["event"];
     if (!ev.isNull()) {
       st.event.kind = str(ev["kind"]);

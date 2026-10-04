@@ -449,8 +449,11 @@ function render() {
     $("weatherLabel").textContent = `Temperatura em ${geo ? geo.name : (state.settings.city || "Canoas")}`;
   }
   if (view === "list") {
-    const n = state.sessions.length;
-    $("listCount").textContent = `${n} ${n === 1 ? "sessão" : "sessões"}`;
+    const n = state.sessions.length, gh = state.github;
+    let head = `${n} ${n === 1 ? "sessão" : "sessões"}`;
+    if (gh && gh.reviews) head += ` · ${gh.reviews} ${gh.reviews === 1 ? "PR" : "PRs"}`;  // awaiting your review
+    if (gh && gh.failing) head += ` · ${gh.failing} CI ✕`;                                 // your PRs, red CI
+    $("listCount").textContent = head;
     $("list").innerHTML = state.sessions.length ? "" : '<div style="padding:10px;color:#777">nenhuma sessão ainda</div>';
     for (const s of state.sessions) {
       const row = document.createElement("div");

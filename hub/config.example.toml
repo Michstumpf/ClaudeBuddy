@@ -37,3 +37,4 @@ skin = "classic"             # classic (whole mascot) or eyes (only the eyes, fo
 battery = true               # show the battery indicator (boards with a battery)
 long_task_min = 15           # notice when a session works this long: 0 (off), 10, 15, 30 or 60
 daily_summary = true         # say the day's summary at "boa noite"
+github = true                # PR review requests / failing CI notices, through the gh CLI logged in on this machine
