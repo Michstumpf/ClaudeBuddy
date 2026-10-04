@@ -40,14 +40,19 @@ def _norm(text: str) -> str:
 # utterances count, so "boa noite" inside a long dictation does not trigger.
 NIGHT_WORDS = ("boa noite", "vou dormir", "encerrando por hoje", "good night")
 MORNING_WORDS = ("bom dia", "acorda", "good morning")
+POMODORO_STOP_WORDS = ("para o pomodoro", "parar o pomodoro", "encerra o pomodoro", "cancela o pomodoro")
 COMMAND_MAX_WORDS = 12
 
 
 def voice_command(text: str) -> str | None:
-    """'night', 'morning' or None for a transcribed utterance."""
+    """'night', 'morning', 'pomodoro_start', 'pomodoro_stop' or None for a transcribed utterance."""
     words = _norm(text)
     if not words or len(words.split()) > COMMAND_MAX_WORDS:
         return None
+    if any(w in words for w in POMODORO_STOP_WORDS):
+        return "pomodoro_stop"
+    if "pomodoro" in words:
+        return "pomodoro_start"
     if any(w in words for w in NIGHT_WORDS):
         return "night"
     if any(w in words for w in MORNING_WORDS):

@@ -7,7 +7,7 @@
 
 namespace app {
 
-enum class MessageType { Unknown, State, Speech, Joke, DecisionResult, DictateResult, Pong };
+enum class MessageType { Unknown, State, Speech, Joke, Notice, DecisionResult, DictateResult, Pong };
 
 struct Incoming {
   MessageType type = MessageType::Unknown;
@@ -26,5 +26,6 @@ std::string settings(const Settings& s);
 std::string joke_now();
 std::string ping();
 std::string battery(int percent, bool charging);
+std::string pomodoro(bool start);
 
 }  // namespace app

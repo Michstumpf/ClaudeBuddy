@@ -32,6 +32,7 @@ from .dictation import make_sender
 from .battery import BatteryWatch, notify_desktop
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
+from .pomodoro import Pomodoro
 from .prefs import Prefs
 from . import weather as weather_api
 from .state import Hub, voice_command
@@ -60,6 +61,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     hub.extra["weather"] = None
     battery = BatteryWatch()
     hub.extra["battery"] = None
+    pomodoro = Pomodoro()
+    hub.extra["pomodoro"] = None
+    hub.extra["focus"] = None  # why the Buddy is in focus mode (no jokes): "pomodoro", "reunião"…
+    working_since: dict[str, float] = {}  # session id -> when it started working
+    long_warned: set[str] = set()
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
     # When several Buddies are connected (e.g. the device plus a simulator tab),
     # only the most recently used one speaks; otherwise the same reply plays
@@ -115,10 +121,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 hub.devices.discard(ws)
         return False
 
+    # ---- notices: short messages in the Buddy's bubble (beep, optionally spoken) --
+
+    async def send_notice(text: str, kind: str, speak: bool = False) -> None:
+        log.info("notice (%s)", kind)
+        message = {"type": "notice", "kind": kind, "text": text}
+        if speak and not hub.night and speaker.available():
+            try:
+                wav = await asyncio.to_thread(speaker.synthesize, text)
+                message.update(store_clip(await asyncio.to_thread(louder, wav)))
+            except Exception:
+                log.exception("could not voice the notice")
+        if not await send_to_buddy(message) and speak and settings.speak_on in ("auto", "local") and "url" in message:
+            await asyncio.to_thread(play_locally, clips[message["id"]])  # no Buddy: say it on the hub
+
+    def refresh_focus() -> None:
+        hub.extra["focus"] = "pomodoro" if pomodoro.focusing else None
+        hub.extra["pomodoro"] = pomodoro.public()
+
+    async def pomodoro_command(action: str) -> None:
+        text = pomodoro.start() if action == "start" else pomodoro.stop()
+        refresh_focus()
+        await hub.notify(None)
+        if text:
+            await send_notice(text, "pomodoro", speak=True)
+
+    def check_long_tasks(now: float) -> list[str]:
+        """Sessions that just crossed the long-task threshold."""
+        limit = prefs["long_task_min"] * 60
+        crossed = []
+        for sid, s in hub.sessions.items():
+            if s.status != "working":
+                working_since.pop(sid, None)
+                long_warned.discard(sid)
+                continue
+            since = working_since.setdefault(sid, now)
+            if limit and now - since >= limit and sid not in long_warned:
+                long_warned.add(sid)
+                crossed.append(f"{s.name} está trabalhando há {int((now - since) // 60)} minutos.")
+        return crossed
+
     # ---- jokes and weather --------------------------------------------------
 
     def calm() -> bool:
-        return not hub.night and not hub.approvals and not any(
+        return not hub.night and not hub.extra.get("focus") and not hub.approvals and not any(
             s.status == "waiting" for s in hub.sessions.values())
 
     async def tell_joke() -> None:
@@ -194,7 +240,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     async def apply_voice_command(text: str) -> None:
         command = voice_command(text)
-        if command == "night":
+        if command in ("pomodoro_start", "pomodoro_stop"):
+            await pomodoro_command("start" if command == "pomodoro_start" else "stop")
+        elif command == "night":
             await set_night(True, "voice")
         elif hub.night:  # "bom dia", or simply talking to it again
             await set_night(False, "voice")
@@ -208,6 +256,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     entries = await asyncio.to_thread(read_local_sessions, settings.sessions_dir)
                     changed = hub.reconcile(entries, host)
                 changed = hub.expire_stale(settings.stale_working) or changed
+                now = time.time()
+                for text in check_long_tasks(now):
+                    await send_notice(text, "long_task")
+                turn = pomodoro.tick(now)
+                if turn or pomodoro.phase:
+                    refresh_focus()  # also refreshes the countdown the Buddy shows
+                    changed = True
+                if turn:
+                    await send_notice(turn, "pomodoro", speak=True)
                 if changed:
                     await hub.notify(None)
             except Exception:
@@ -339,6 +396,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if alert:
                         asyncio.get_running_loop().run_in_executor(None, notify_desktop, alert)
                     await hub.notify(None)
+                elif kind == "pomodoro":
+                    await pomodoro_command("start" if msg.get("action") == "start" else "stop")
                 elif kind == "joke_now":
                     asyncio.get_running_loop().create_task(tell_joke())
                 if kind == "decision":

@@ -35,14 +35,22 @@ struct Settings {
   std::string city = "Canoas";  // where the weather is from (the hub's search result)
   bool eyes_skin = false;       // skin "eyes": only the eyes, for a mascot-shaped case
   bool show_battery = true;     // battery indicator in the status bar
+  int long_task_min = 15;       // notice after a session works this long (0 = off)
 };
 
 struct Event {
   std::string kind, session;  // kind: done | attention | approval | night | morning | ""
 };
 
+struct Pomodoro {
+  std::string phase;  // "focus" | "break" | "" (not running)
+  int ends_in = 0;    // seconds left when the hub sent it
+};
+
 struct State {
   std::vector<Session> sessions;
+  Pomodoro pomodoro;
+  std::string focus;  // why the Buddy is in focus mode ("pomodoro", "reunião"), "" if not
   std::vector<Approval> pending;
   int devices = 0;
   bool night = false;

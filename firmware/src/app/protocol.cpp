@@ -60,6 +60,7 @@ Incoming parse(const std::string& json) {
       if (!city.empty()) st.settings.city = city;
       st.settings.eyes_skin = str(set["skin"]) == "eyes";
       st.settings.show_battery = set["battery"] | true;
+      st.settings.long_task_min = set["long_task_min"] | 15;
     }
     JsonObjectConst w = doc["weather"];
     if (!w.isNull()) {
@@ -68,13 +69,19 @@ Incoming parse(const std::string& json) {
       st.weather.place = str(w["place"]);
       st.weather.text = str(w["text"]);
     }
+    JsonObjectConst pomo = doc["pomodoro"];
+    if (!pomo.isNull()) {
+      st.pomodoro.phase = str(pomo["phase"]);
+      st.pomodoro.ends_in = pomo["ends_in"] | 0;
+    }
+    st.focus = str(doc["focus"]);
     JsonObjectConst ev = doc["event"];
     if (!ev.isNull()) {
       st.event.kind = str(ev["kind"]);
       st.event.session = str(ev["session"]);
     }
-  } else if (type == "speech" || type == "joke") {
-    in.type = type == "joke" ? MessageType::Joke : MessageType::Speech;
+  } else if (type == "speech" || type == "joke" || type == "notice") {
+    in.type = type == "joke" ? MessageType::Joke : type == "notice" ? MessageType::Notice : MessageType::Speech;
     in.text = str(doc["text"]);
     in.url = str(doc["url"]);
     in.id = str(doc["id"]);
@@ -115,6 +122,10 @@ std::string battery(int percent, bool charging) {
   return dump(doc);
 }
 
+std::string pomodoro(bool start) {
+  return start ? R"({"type":"pomodoro","action":"start"})" : R"({"type":"pomodoro","action":"stop"})";
+}
+
 std::string settings(const Settings& s) {
   JsonDocument doc;
   doc["type"] = "settings";
@@ -125,6 +136,7 @@ std::string settings(const Settings& s) {
   v["joke_interval_min"] = s.joke_interval_min;
   v["skin"] = s.eyes_skin ? "eyes" : "classic";
   v["battery"] = s.show_battery;
+  v["long_task_min"] = s.long_task_min;
   return dump(doc);
 }
 

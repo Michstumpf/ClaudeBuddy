@@ -28,6 +28,11 @@ bool connected_ = false;
 enum View : uint8_t { kFace, kList, kSession, kApprove, kSettings, kViews };
 lv_obj_t* views_[kViews];
 View view_ = kFace;
+// Taps right after the screen changed are ignored: a finger already down when
+// an approval pops up must not land on "Aprovar" without the user seeing it.
+constexpr uint32_t kSettleMs = 400;
+uint32_t view_changed_at_ = 0;
+bool settling() { return millis() - view_changed_at_ < kSettleMs; }
 std::string current_session_;           // id shown in kSession
 std::string approval_id_;               // pending approval on screen
 uint32_t approval_seen_ = 0;            // millis() when it arrived
@@ -38,8 +43,11 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-constexpr int kPrefs = 6;
-lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery
+constexpr int kPrefs = 8;
+lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro
+lv_obj_t* bar_mid_;           // pomodoro countdown
+uint32_t pomo_at_ = 0;        // millis() when the countdown was received
+int pomo_secs_ = 0;
 lv_obj_t* weather_label_;  // "Temperatura em <cidade>"
 
 lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_, *bar_right_;
@@ -277,6 +285,7 @@ void animate() {
 void show(View v);
 
 void on_face_tap(lv_event_t*) {
+  if (settling()) return;
   if (send_) send_(app::touch());
   show(kList);
 }
@@ -321,7 +330,10 @@ lv_obj_t* text_box(lv_obj_t* parent, int x, int y, int w, int h) {
   return box;
 }
 
-void go(lv_event_t* e) { show(static_cast<View>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)))); }
+void go(lv_event_t* e) {
+  if (settling()) return;
+  show(static_cast<View>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e))));
+}
 void* to(View v) { return reinterpret_cast<void*>(static_cast<uintptr_t>(v)); }
 
 lv_color_t status_color(app::Status s) {
@@ -347,6 +359,7 @@ const char* status_name(app::Status s) {
 // ---- list of sessions ----
 
 void on_row(lv_event_t* e) {
+  if (settling()) return;
   size_t i = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
   if (i < state_.sessions.size()) {
     current_session_ = state_.sessions[i].id;
@@ -434,6 +447,7 @@ void fill_session() {
 // ---- approval ----
 
 void on_decide(lv_event_t* e) {
+  if (settling()) return;
   const bool allow = lv_event_get_user_data(e) != nullptr;
   if (send_ && !approval_id_.empty()) send_(app::decision(approval_id_, allow));
 }
@@ -482,6 +496,7 @@ void tick_approve_timer() {
 const int kIntervals[] = {15, 30, 45, 60, 120};
 
 void on_pref(lv_event_t* e) {
+  if (settling()) return;
   app::Settings s = state_.settings;
   switch (reinterpret_cast<uintptr_t>(lv_event_get_user_data(e))) {
     case 0: s.jokes = !s.jokes; break;
@@ -495,11 +510,22 @@ void on_pref(lv_event_t* e) {
     case 3: s.weather = !s.weather; break;
     case 4: s.eyes_skin = !s.eyes_skin; break;
     case 5: s.show_battery = !s.show_battery; break;
+    case 6: {
+      const int options[] = {0, 10, 15, 30, 60};
+      size_t i = 0;
+      while (i < 5 && options[i] != s.long_task_min) i++;
+      s.long_task_min = options[(i + 1) % 5];
+      break;
+    }
+    case 7:
+      if (send_) send_(app::pomodoro(state_.pomodoro.phase.empty()));
+      return;
   }
   if (send_) send_(app::settings(s));
 }
 
 void on_joke_now(lv_event_t*) {
+  if (settling()) return;
   if (send_) send_(app::joke_now());
   show(kFace);
 }
@@ -509,7 +535,8 @@ void build_settings(lv_obj_t* v) {
   lv_label_set_text(title, "⚙ Configurações");
   lv_obj_set_pos(title, 8, 8);
   const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
-                               "Temperatura lá fora", "Visual", "Indicador de bateria"};
+                               "Temperatura lá fora", "Visual", "Indicador de bateria",
+                               "Aviso de tarefa longa", "Pomodoro (25 + 5 min)"};
   // The options scroll; Voltar / Contar stay put at the bottom.
   lv_obj_t* list = lv_obj_create(v);
   lv_obj_remove_style_all(list);
@@ -548,6 +575,15 @@ void fill_settings() {
   snprintf(buf, sizeof(buf), "%d min", state_.settings.joke_interval_min);
   set_button_text(pref_btn_[2], buf);
   set_button_text(pref_btn_[4], state_.settings.eyes_skin ? "Só os olhos" : "Clássico");
+  if (state_.settings.long_task_min) {
+    snprintf(buf, sizeof(buf), "%d min", state_.settings.long_task_min);
+    set_button_text(pref_btn_[6], buf);
+  } else {
+    set_button_text(pref_btn_[6], "Desligado");
+  }
+  const bool pomo = !state_.pomodoro.phase.empty();
+  set_button_text(pref_btn_[7], pomo ? "Parar" : "Iniciar");
+  lv_obj_set_style_bg_color(pref_btn_[7], pomo ? kBtnOk : kBtn, 0);
   // The city is changed from the web panel (no keyboard on a 2" screen).
   lv_label_set_text_fmt(weather_label_, "Temperatura em %s", state_.settings.city.c_str());
 }
@@ -555,6 +591,7 @@ void fill_settings() {
 // ---- navigation ----
 
 void show(View v) {
+  if (v != view_) view_changed_at_ = millis();
   view_ = v;
   for (int i = 0; i < kViews; i++)
     if (i == v) lv_obj_remove_flag(views_[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(views_[i], LV_OBJ_FLAG_HIDDEN);
@@ -638,6 +675,9 @@ void begin(Sender send) {
   lv_obj_t* bar = box(scr, 0, 218, 320, 22, kBar);
   bar_left_ = text(bar, &buddy_font_11, kMuted);
   lv_obj_align(bar_left_, LV_ALIGN_LEFT_MID, 8, 0);
+  bar_mid_ = text(bar, &buddy_font_11, kAccent);
+  lv_label_set_text(bar_mid_, "");
+  lv_obj_align(bar_mid_, LV_ALIGN_CENTER, 10, 0);
   // Battery: an outlined cell with a fill proportional to the charge, and the
   // percentage beside it. Hidden on boards without a battery.
   batt_shell_ = lv_obj_create(bar);
@@ -669,6 +709,8 @@ void apply(const app::State& state, bool connected) {
   state_ = state;
   if (state_.settings.show_battery != battery_shown) set_battery(battery_, charging_);
   connected_ = connected;
+  pomo_secs_ = state.pomodoro.ends_in;
+  pomo_at_ = millis();
   if (state.event.kind == "done") {
     done_session_ = state.event.session;
     done_at_ = millis();
@@ -676,6 +718,8 @@ void apply(const app::State& state, bool connected) {
   refresh();
   route();
 }
+
+void on_notice(const std::string& t) { on_joke(t); }
 
 void on_joke(const std::string& t) {
   if (view_ != kApprove) show(kFace);
@@ -729,7 +773,18 @@ void loop() {
       lv_display_get_inactive_time(nullptr) > kIdleBackMs)
     show(kFace);
   static uint32_t last = 0;
-  if (millis() - last > 1000) { last = millis(); refresh(); }  // expire "done", etc.
+  if (millis() - last > 1000) {  // expire "done", tick the pomodoro countdown, etc.
+    last = millis();
+    refresh();
+    if (state_.pomodoro.phase.empty()) {
+      lv_label_set_text(bar_mid_, "");
+    } else {
+      int left = pomo_secs_ - static_cast<int>((millis() - pomo_at_) / 1000);
+      if (left < 0) left = 0;
+      lv_label_set_text_fmt(bar_mid_, "%s %02d:%02d", state_.pomodoro.phase == "focus" ? "foco" : "pausa", left / 60,
+                            left % 60);
+    }
+  }
 }
 
 }  // namespace ui

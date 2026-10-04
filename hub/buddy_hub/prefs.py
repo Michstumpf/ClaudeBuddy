@@ -15,6 +15,7 @@ DEFAULTS = {
     "weather": True,           # outside temperature on the face screen
     "skin": "classic",         # classic: the whole mascot | eyes: only its eyes, for a mascot-shaped case
     "battery": True,           # battery indicator in the status bar (boards with a battery)
+    "long_task_min": 15,       # notice when a session works this long (0 = off)
     "city": "Canoas",          # weather city as typed ("Porto Alegre", "São José, SC")
     # Where "city" resolved to (set by the hub after a successful search, not by
     # the user). None: use the built-in default (Canoas).
@@ -23,6 +24,7 @@ DEFAULTS = {
 CITY_MAX_CHARS = 60
 JOKE_INTERVALS = (15, 30, 45, 60, 120)
 SKINS = ("classic", "eyes")
+LONG_TASK_OPTIONS = (0, 10, 15, 30, 60)
 
 
 class Prefs:
@@ -68,6 +70,13 @@ class Prefs:
                     continue
             elif isinstance(DEFAULTS[key], bool):
                 value = bool(value)
+            elif key == "long_task_min":
+                try:
+                    value = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if value not in LONG_TASK_OPTIONS:
+                    continue
             elif key == "joke_interval_min":
                 try:
                     value = int(value)

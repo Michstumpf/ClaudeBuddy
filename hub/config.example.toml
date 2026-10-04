@@ -35,3 +35,4 @@ joke_interval_min = 45       # 15, 30, 45, 60 or 120
 weather = true
 skin = "classic"             # classic (whole mascot) or eyes (only the eyes, for a mascot-shaped case)
 battery = true               # show the battery indicator (boards with a battery)
+long_task_min = 15           # notice when a session works this long: 0 (off), 10, 15, 30 or 60

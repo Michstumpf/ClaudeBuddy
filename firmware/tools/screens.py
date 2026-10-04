@@ -86,6 +86,10 @@ CASES = [
     ("19-bateria-oculta", [send(state(session("DataHub Sharing Chat", "idle"), settings={**SETTINGS, "battery": False}))], 900),
     ("20-config-rolada", [send(state(session("DataHub Sharing Chat", "idle"))), tap(160, 100), tap(296, 18),
                           ("drag", 160, 160, 160, 60)], 1500),
+    ("21-pomodoro-aviso", [tap(48, 194), tap(40, 18),
+                           send({**state(session("HIPAA Compliance", "working")),
+                                 "pomodoro": {"phase": "focus", "ends_in": 1453, "rounds": 0}, "focus": "pomodoro"}),
+                           send({"type": "notice", "kind": "long_task", "text": "HIPAA Compliance está trabalhando há 15 minutos."})], 1200),
 ]
 
 
@@ -98,7 +102,7 @@ def build_scenario() -> None:
                 m = action[1]
                 # json.dumps escapes non-ASCII (é...) exactly like the hub does
                 steps.append("  - write-serial: |\n      " + json.dumps(m, separators=(",", ":")))
-                steps.append(f'  - wait-serial: "rx: {"joke" if m["type"] == "joke" else "state"}"')
+                steps.append(f'  - wait-serial: "rx: {m["type"] if m["type"] in ("joke", "notice") else "state"}"')
             elif action[0] == "drag":
                 _, x1, y1, x2, y2 = action
                 steps.append("  - write-serial: |\n      " + json.dumps(
@@ -115,8 +119,9 @@ def build_scenario() -> None:
                 # What a tap sends comes out right away: wait for it with no
                 # delay in between, or the line is printed before anyone listens.
                 # Two taps in a row need a pause, or the second overrides the first.
+                # (and the firmware ignores taps for 400 ms after a screen change).
                 if following != "expect":
-                    steps.append("  - delay: 250ms")
+                    steps.append("  - delay: 700ms")
             else:
                 steps.append("  - wait-serial: " + json.dumps(action[1]))
         steps.append(f"  - delay: {wait}ms")
@@ -131,7 +136,7 @@ def main() -> int:
         sys.exit("Set WOKWI_CLI_TOKEN (a Wokwi CI token).")
     build_scenario()
     SHOTS.mkdir(parents=True, exist_ok=True)
-    run = subprocess.run([WOKWI, str(ROOT), "--timeout", "120000", "--scenario", str(SCENARIO)],
+    run = subprocess.run([WOKWI, str(ROOT), "--timeout", "300000", "--scenario", str(SCENARIO)],
                          capture_output=True, text=True)
     print("\n".join(l for l in run.stdout.splitlines() if l.startswith("[screens]") or "rx:" in l)[-2000:])
     if run.returncode != 0:

@@ -110,6 +110,7 @@
   @keyframes wave { from { transform: scaleY(.4); } to { transform: scaleY(1.3); } }
 
   .chip { position: absolute; top: 6px; left: 8px; color: #b9b4ad; font-size: 11px; }
+  .pomo { color: var(--accent); font-weight: bold; }
   .bubble { position: absolute; top: 8px; right: 8px; width: 170px; padding: 6px 8px; background: var(--scr-fg); color: #1b1d22;
             border-radius: 8px; font-size: 10px; line-height: 1.3; opacity: 0; transform: translateY(-4px); transition: opacity .25s, transform .25s; pointer-events: none; }
   .bubble.on { opacity: 1; transform: none; }
@@ -220,6 +221,8 @@
           <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
           <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
           <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
+          <div class="opt"><span>Aviso de tarefa longa</span><button class="btn" id="prefLong"></button></div>
+          <div class="opt"><span>Pomodoro (25 + 5 min)</span><button class="btn" id="pomoBtn"></button></div>
           </div>
           <div class="btns">
             <button class="btn" data-go="list">◀ Voltar</button>
@@ -264,7 +267,7 @@
         </div>
       </div>
 
-      <div class="bar"><span id="barLeft">—</span><span><span class="batt hide" id="batt"><span id="battPct"></span><span class="cell"><span class="fill" id="battFill"></span><span class="bolt" id="battBolt">+</span></span></span><span id="barRight"></span></span></div>
+      <div class="bar"><span id="barLeft">—</span><span class="pomo" id="pomo"></span><span><span class="batt hide" id="batt"><span id="battPct"></span><span class="cell"><span class="fill" id="battFill"></span><span class="bolt" id="battBolt">+</span></span></span><span id="barRight"></span></span></div>
     </div></div></div>
     <div class="mic-holes"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
@@ -362,6 +365,9 @@ function onMessage(msg) {
     speak(msg);
   } else if (msg.type === "joke") {
     showJoke(msg);
+  } else if (msg.type === "notice") {
+    if (!state.night) beep([784, 988]);
+    showJoke(msg);  // same bubble; spoken when the hub sent audio
   } else if (msg.type === "settings_result") {
     $("cityResult").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
     log(`configuração: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
@@ -418,6 +424,9 @@ function render() {
   }
   const skin = (state.settings && state.settings.skin) || "classic";
   $("screen").classList.toggle("skin-eyes", skin === "eyes");
+  const pomo = state.pomodoro;
+  if (pomo) { pomoEnds = Date.now() + pomo.ends_in * 1000; pomoPhase = pomo.phase; } else { pomoPhase = null; }
+  tickPomo();
   const wx = state.weather;
   $("wx").textContent = wx ? `${wx.icon} ${wx.temp}° ${wx.place}` : "";
   if (view === "settings" && state.settings) {
@@ -427,6 +436,10 @@ function render() {
     });
     $("prefInterval").textContent = `${state.settings.joke_interval_min} min`;
     $("prefSkin").textContent = state.settings.skin === "eyes" ? "Só os olhos" : "Clássico";
+    const lt = state.settings.long_task_min;
+    $("prefLong").textContent = lt ? `${lt} min` : "Desligado";
+    $("pomoBtn").textContent = state.pomodoro ? "Parar" : "Iniciar";
+    $("pomoBtn").classList.toggle("on", !!state.pomodoro);
     const geo = state.settings.city_geo;
     $("weatherLabel").textContent = `Temperatura em ${geo ? geo.name : (state.settings.city || "Canoas")}`;
   }
@@ -523,6 +536,24 @@ $("prefInterval").onclick = (e) => {
   e.stopPropagation();
   const now = state.settings ? state.settings.joke_interval_min : 45;
   send({ type: "settings", values: { joke_interval_min: INTERVALS[(INTERVALS.indexOf(now) + 1) % INTERVALS.length] } });
+};
+let pomoEnds = 0, pomoPhase = null;
+function tickPomo() {
+  if (!pomoPhase) { $("pomo").textContent = ""; return; }
+  const left = Math.max(0, Math.round((pomoEnds - Date.now()) / 1000));
+  const mmss = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
+  $("pomo").textContent = `${pomoPhase === "focus" ? "foco" : "pausa"} ${mmss}`;
+}
+setInterval(tickPomo, 1000);
+const LONG_OPTIONS = [0, 10, 15, 30, 60];
+$("prefLong").onclick = (e) => {
+  e.stopPropagation();
+  const now = state.settings ? state.settings.long_task_min : 15;
+  send({ type: "settings", values: { long_task_min: LONG_OPTIONS[(LONG_OPTIONS.indexOf(now) + 1) % LONG_OPTIONS.length] } });
+};
+$("pomoBtn").onclick = (e) => {
+  e.stopPropagation();
+  send({ type: "pomodoro", action: state.pomodoro ? "stop" : "start" });
 };
 $("prefSkin").onclick = (e) => {
   e.stopPropagation();

@@ -12,6 +12,7 @@ using Sender = void (*)(const std::string& json);
 void begin(Sender send);
 void apply(const app::State& state, bool connected);  // every state message
 void on_joke(const std::string& text);
+void on_notice(const std::string& text);  // hub notices: same bubble as jokes
 void set_battery(int percent, bool charging);  // percent < 0: no battery, hide it
 // Link status: while not connected the face says why ("conectando ao WiFi…").
 void set_link(const char* status, bool connected);

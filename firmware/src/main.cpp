@@ -89,6 +89,10 @@ static void on_message(const std::string& json) {
       ui::on_joke(in.text);
       Serial.println("rx: joke");
       break;
+    case app::MessageType::Notice:
+      ui::on_notice(in.text);
+      Serial.println("rx: notice");
+      break;
     default:
       break;
   }
