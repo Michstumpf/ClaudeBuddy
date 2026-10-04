@@ -178,3 +178,31 @@ def test_skin_pref():
     assert p["skin"] == "classic"
     assert p.update({"skin": "eyes"}) and p["skin"] == "eyes"
     assert not p.update({"skin": "neon"}) and p["skin"] == "eyes"  # unknown skins are ignored
+
+
+# ---- network allowlist ---------------------------------------------------------------
+
+def test_allowlist_blocks_other_networks_even_with_the_token():
+    app = create_app(Settings(token=TOKEN, dictation_backend="dry-run",
+                              allowed_networks=["127.0.0.0/8", "192.168.0.0/24", "100.64.0.0/10"]))
+    H = {"X-Buddy-Token": TOKEN}
+    for ip, ok in (("127.0.0.1", True), ("192.168.0.42", True), ("100.88.15.1", True),
+                   ("10.0.0.5", False), ("203.0.113.9", False)):
+        with TestClient(app, client=(ip, 5555)) as c:
+            assert (c.get("/api/state", headers=H).status_code == 200) is ok, ip
+
+
+def test_allowlist_closes_foreign_websockets():
+    app = create_app(Settings(token=TOKEN, dictation_backend="dry-run", allowed_networks=["127.0.0.0/8"]))
+    with TestClient(app, client=("10.0.0.5", 5555)) as c:
+        with pytest.raises(Exception):
+            with c.websocket_connect(f"/ws?token={TOKEN}") as ws:
+                ws.receive_json()
+
+
+def test_networks_from_env(monkeypatch, tmp_path):
+    monkeypatch.setattr("buddy_hub.config.TOKEN_FILE", tmp_path / "token")
+    monkeypatch.setenv("BUDDY_ALLOWED_NETWORKS", "127.0.0.0/8, 192.168.1.0/24")
+    assert HubSettings.from_env({}).allowed_networks == ["127.0.0.0/8", "192.168.1.0/24"]
+    monkeypatch.delenv("BUDDY_ALLOWED_NETWORKS")
+    assert HubSettings.from_env({}).allowed_networks == ["127.0.0.0/8", "::1/128"]

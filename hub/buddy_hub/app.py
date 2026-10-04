@@ -11,6 +11,7 @@
 
 import asyncio
 import hmac
+import ipaddress
 import json
 import logging
 import random
@@ -46,6 +47,39 @@ from .tts import RemoteFirstSpeaker, Speaker, louder, speakable, to_stereo
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
+
+
+class NetworkAllowlist:
+    """Serves only clients from the allowed networks (HTTP and WebSocket),
+    whatever token they bring: the hub may listen on every interface of a
+    notebook that also joins other people's networks."""
+
+    def __init__(self, app, networks: list):
+        self.app = app
+        self.networks = [ipaddress.ip_network(n, strict=False) for n in networks]
+
+    def allowed(self, host: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        if ip.version == 6 and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        return any(ip in n for n in self.networks)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            host = (scope.get("client") or ("", 0))[0]
+            if not self.allowed(host):
+                log.warning("refused a %s from %s (not in allowed_networks)", scope["type"], host)
+                if scope["type"] == "http":
+                    await send({"type": "http.response.start", "status": 403,
+                                "headers": [(b"content-type", b"text/plain")]})
+                    await send({"type": "http.response.body", "body": b"forbidden network"})
+                else:
+                    await send({"type": "websocket.close", "code": 4403})
+                return
+        await self.app(scope, receive, send)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -443,6 +477,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             task.cancel()
 
     app = FastAPI(title="Claude Buddy hub", lifespan=lifespan)
+    if settings.allowed_networks is not None:
+        app.add_middleware(NetworkAllowlist, networks=settings.allowed_networks)
     app.state.hub = hub
     app.state.sender = sender
 

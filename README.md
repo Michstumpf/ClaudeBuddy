@@ -90,6 +90,18 @@ mkdir -p ~/.local/share/claude-buddy/voices && cd ~/.local/share/claude-buddy/vo
 ~/personal/ClaudeBuddy/.venv/bin/python -m piper.download_voices pt_BR-faber-medium
 ```
 
+## Rede: quem alcança o hub
+
+Por padrão o hub só atende a própria máquina. Para o CoreS3 (WiFi de casa) e outras máquinas (Tailscale), em `~/.config/claude-buddy/config.toml`:
+
+```toml
+[hub]
+listen = "0.0.0.0"
+allowed_networks = ["127.0.0.0/8", "::1/128", "100.64.0.0/10", "192.168.0.0/24"]  # + Tailscale + casa
+```
+
+Fora dessas redes o hub responde 403 (e fecha WebSockets), **mesmo com o token certo** — o Ubuntu é um notebook que entra em outras redes.
+
 ## Configuração da instalação
 
 `hub/config.example.toml` lista tudo o que dá para ajustar (cidade padrão, voz, modelo do Whisper, worker da GPU, piadas…). Copie para `~/.config/claude-buddy/config.toml` (ou aponte `BUDDY_CONFIG`) e deixe só o que quiser mudar.

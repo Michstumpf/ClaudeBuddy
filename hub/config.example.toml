@@ -10,6 +10,11 @@
 # (delete that file to go back to these defaults).
 
 [hub]
+listen = "127.0.0.1"         # 0.0.0.0 for the CoreS3 (home WiFi) / other machines (Tailscale) (BUDDY_LISTEN)
+port = 8765                  # (BUDDY_PORT)
+# Client networks served, whatever token they bring (BUDDY_ALLOWED_NETWORKS="a,b"). Add your home
+# LAN (e.g. "192.168.0.0/24") and Tailscale ("100.64.0.0/10") when listening on 0.0.0.0.
+allowed_networks = ["127.0.0.0/8", "::1/128"]
 approval_timeout = 20        # seconds a permission waits for a tap before the normal dialog (BUDDY_APPROVAL_TIMEOUT)
 stale_working = 600          # hook-only session stuck "working" this long goes idle (BUDDY_STALE_WORKING)
 speak_on = "auto"            # auto | local | devices | off (BUDDY_SPEAK_ON)

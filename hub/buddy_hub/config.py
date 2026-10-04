@@ -23,6 +23,15 @@ def load_config_file(path: Path | None = None) -> dict:
         return {}
 
 
+LOCAL_ONLY = ["127.0.0.0/8", "::1/128"]
+
+
+def _networks(value) -> list:
+    """A TOML list, or "a,b,c" from the environment."""
+    items = value.split(",") if isinstance(value, str) else list(value)
+    return [i.strip() for i in items if str(i).strip()]
+
+
 class _Layered:
     """Built-in default < config.toml < BUDDY_* env var, one setting at a time."""
 
@@ -98,6 +107,12 @@ class Settings:
     # token goes in ~/.config/claude-buddy/jira_token.
     jira_site: str = ""
     jira_email: str = ""
+    # [hub] listen / allowed_networks: where the hub listens and which client
+    # networks it serves. None = no filtering (tests). The notebook may join
+    # other networks, so listening on 0.0.0.0 is only safe with this list.
+    listen: str = "127.0.0.1"
+    port: int = 8765
+    allowed_networks: list | None = None
 
     @classmethod
     def from_env(cls, config: dict | None = None) -> "Settings":
@@ -123,6 +138,9 @@ class Settings:
             calendar_email=c.get("calendar", "email", "BUDDY_CALENDAR_EMAIL", ""),
             jira_site=c.get("jira", "site", "BUDDY_JIRA_SITE", ""),
             jira_email=c.get("jira", "email", "BUDDY_JIRA_EMAIL", ""),
+            listen=c.get("hub", "listen", "BUDDY_LISTEN", "127.0.0.1"),
+            port=c.get("hub", "port", "BUDDY_PORT", 8765, int),
+            allowed_networks=c.get("hub", "allowed_networks", "BUDDY_ALLOWED_NETWORKS", LOCAL_ONLY, _networks),
         )
 
 
