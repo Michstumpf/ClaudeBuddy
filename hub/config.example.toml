@@ -36,3 +36,4 @@ weather = true
 skin = "classic"             # classic (whole mascot) or eyes (only the eyes, for a mascot-shaped case)
 battery = true               # show the battery indicator (boards with a battery)
 long_task_min = 15           # notice when a session works this long: 0 (off), 10, 15, 30 or 60
+daily_summary = true         # say the day's summary at "boa noite"

@@ -314,6 +314,11 @@
     <p style="color:var(--muted);font-size:12px;margin:4px 0 0">As sessões falsas se chamam <code>fake-api</code> e <code>fake-web</code>; os botões alternam entre elas.</p>
   </section>
   <section>
+    <h2>Hoje e o mês</h2>
+    <p class="result" id="today">—</p>
+    <p class="result" id="claudeMonth">—</p>
+  </section>
+  <section>
     <h2>Custo do resumo falado (Haiku)</h2>
     <p class="conn" id="usage">—</p>
   </section>
@@ -749,6 +754,22 @@ async function refreshUsage() {
 }
 refreshUsage();
 setInterval(refreshUsage, 60000);
+
+async function refreshToday() {
+  if (!token) return;
+  try {
+    const r = await fetch("/api/today", { headers: { "X-Buddy-Token": token } });
+    if (!r.ok) return;
+    const t = await r.json();
+    $("today").textContent = t.summary.replace(/ Boa noite!$/, "");
+    const m = t.claude_month;
+    $("claudeMonth").textContent = m
+      ? `Claude Code em ${m.month}: ~US$ ${m.usd.toLocaleString("pt-BR")} em preço de API (${m.messages} respostas). Estimativa: no plano por assinatura nada disso é cobrado por token.`
+      : "Uso do Claude no mês: calculando…";
+  } catch {}
+}
+refreshToday();
+setInterval(refreshToday, 60000);
 
 // ---------- real size: the CoreS3's 2" screen is 40.6 x 30.5 mm ----------
 const SCREEN_MM = 40.64;   // 2" diagonal at 4:3

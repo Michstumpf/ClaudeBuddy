@@ -31,6 +31,8 @@ from .config import Settings
 from .dictation import make_sender
 from .battery import BatteryWatch, notify_desktop
 from . import intents
+from .claude_usage import ClaudeUsage
+from .daystats import DayStats
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
 from .pomodoro import Pomodoro
@@ -65,6 +67,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     pomodoro = Pomodoro()
     hub.extra["pomodoro"] = None
     hub.extra["focus"] = None  # why the Buddy is in focus mode (no jokes): "pomodoro", "reunião"…
+    stats = DayStats()
+    claude_usage = ClaudeUsage()
+    hub.extra["claude_month"] = None  # API-equivalent estimate from local transcripts
     working_since: dict[str, float] = {}  # session id -> when it started working
     long_warned: set[str] = set()
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
@@ -153,7 +158,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         crossed = []
         for sid, s in hub.sessions.items():
             if s.status != "working":
-                working_since.pop(sid, None)
+                since = working_since.pop(sid, None)
+                if since:
+                    stats.worked(s.name, now - since)
                 long_warned.discard(sid)
                 continue
             since = working_since.setdefault(sid, now)
@@ -203,6 +210,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await hub.notify(None)
         except Exception as exc:
             log.warning("weather unavailable (%s)", exc.__class__.__name__)
+
+    async def claude_usage_loop() -> None:
+        while True:
+            try:
+                hub.extra["claude_month"] = await asyncio.to_thread(claude_usage.month)
+            except Exception:
+                log.exception("claude usage estimate failed")
+            await asyncio.sleep(600)
 
     async def weather_loop() -> None:
         while True:
@@ -291,6 +306,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await pomodoro_command("start" if command == "pomodoro_start" else "stop")
             return "pomodoro " + ("iniciado" if command == "pomodoro_start" else "encerrado")
         if command == "night":
+            if prefs["daily_summary"] and not hub.night:
+                cwds = [x.cwd for x in hub.sessions.values() if x.cwd]
+                await send_notice(await asyncio.to_thread(stats.summary, None, cwds), "summary", speak=True)
             await set_night(True, "voice")
         elif hub.night:  # "bom dia", or simply talking to it again
             await set_night(False, "voice")
@@ -313,6 +331,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     refresh_focus()  # also refreshes the countdown the Buddy shows
                     changed = True
                 if turn:
+                    if pomodoro.phase == "break":
+                        stats.count("pomodoros")
                     await send_notice(turn, "pomodoro", speak=True)
                 if changed:
                     await hub.notify(None)
@@ -324,7 +344,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI):
         tasks = [asyncio.create_task(housekeeping())]
         if settings.background_extras:
-            tasks += [asyncio.create_task(joke_loop()), asyncio.create_task(weather_loop())]
+            tasks += [asyncio.create_task(joke_loop()), asyncio.create_task(weather_loop()),
+                      asyncio.create_task(claude_usage_loop())]
         yield
         for task in tasks:
             task.cancel()
@@ -370,7 +391,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def hook(request: Request, x_buddy_token: str | None = Header(None)):
         check(x_buddy_token)
         payload = await request.json()
-        return await hub.handle_hook(payload)
+        response = await hub.handle_hook(payload)
+        event = payload.get("hook_event_name")
+        session = hub.sessions.get(payload.get("session_id") or "")
+        if event == "UserPromptSubmit" and session:
+            stats.session_used(session.name, session.cwd)
+            if session.voice_turn:
+                stats.count("voice_turns")
+        elif event == "PermissionRequest" and response.get("decision") in ("allow", "deny"):
+            stats.count("approved" if response["decision"] == "allow" else "denied")
+        return response
 
     @app.post("/api/dictate")
     async def api_dictate(request: Request, x_buddy_token: str | None = Header(None)):
@@ -399,6 +429,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if detail:  # the hub took care of it: nothing to type in the focused window
             result.update({"text": "", "handled": True, "detail": detail})
         return result
+
+    @app.get("/api/today")
+    async def api_today(x_buddy_token: str | None = Header(None)):
+        """Today's numbers (the "boa noite" summary) and this month's Claude usage estimate."""
+        check(x_buddy_token)
+        commits = await asyncio.to_thread(stats.commits, [x.cwd for x in hub.sessions.values() if x.cwd])
+        return {"stats": {**stats.data, "commits": commits}, "summary": stats.summary(commits),
+                "claude_month": hub.extra.get("claude_month")}
 
     @app.get("/api/usage")
     async def usage(x_buddy_token: str | None = Header(None)):
