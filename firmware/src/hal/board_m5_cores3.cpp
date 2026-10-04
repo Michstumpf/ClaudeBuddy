@@ -33,6 +33,7 @@ bool touch(int& x, int& y) {
 
 int battery_percent() { return M5.Power.getBatteryLevel(); }
 bool charging() { return M5.Power.isCharging() == m5::Power_Class::is_charging_t::is_charging; }
+void set_brightness(uint8_t level) { M5.Display.setBrightness(level); }
 
 }  // namespace hal::board
 #endif

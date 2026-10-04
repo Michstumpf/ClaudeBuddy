@@ -22,5 +22,7 @@ bool touch(int& x, int& y);
 // Battery charge 0-100, or -1 without a battery.
 int battery_percent();
 bool charging();
+// Backlight 0-255 (no-op without a dimmable backlight).
+void set_brightness(uint8_t level);
 
 }  // namespace hal::board

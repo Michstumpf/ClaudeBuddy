@@ -52,7 +52,10 @@ lv_obj_t* bigeyes_ = nullptr;
 bool eyes_skin_ = false;
 
 app::Mood mood_ = app::Mood::Off;
-bool redraw_ = true;  // redraw the face even if the mood is the same (skin changed, first frame)
+bool redraw_ = true;
+int battery_ = -1;          // percent, -1 = no battery
+bool charging_ = false;
+lv_obj_t *batt_shell_, *batt_fill_, *batt_bolt_;  // redraw the face even if the mood is the same (skin changed, first frame)
 std::string link_status_;
 std::string done_session_;
 uint32_t done_at_ = 0, bubble_until_ = 0, frame_at_ = 0;
@@ -230,6 +233,8 @@ void refresh() {
   if (bubble_until_ && (state_.night || !connected_)) hide_bubble();
   app::MoodView v = app::mood(state_, connected_, false, done_session_);
   if (!connected_ && !link_status_.empty()) v.label = link_status_;
+  if (battery_ >= 0 && battery_ <= 10 && !charging_ && (v.mood == app::Mood::Idle || v.mood == app::Mood::Sleep))
+    v.label = "bateria fraca, me carrega?";
   set_mood(v);
 
   if (state_.weather.valid && state_.settings.weather)
@@ -621,9 +626,26 @@ void begin(Sender send) {
   lv_obj_t* bar = box(scr, 0, 218, 320, 22, kBar);
   bar_left_ = text(bar, &buddy_font_11, kMuted);
   lv_obj_align(bar_left_, LV_ALIGN_LEFT_MID, 8, 0);
+  // Battery: an outlined cell with a fill proportional to the charge, and the
+  // percentage beside it. Hidden on boards without a battery.
+  batt_shell_ = lv_obj_create(bar);
+  lv_obj_remove_style_all(batt_shell_);
+  lv_obj_set_size(batt_shell_, 22, 11);
+  lv_obj_set_style_border_width(batt_shell_, 1, 0);
+  lv_obj_set_style_border_color(batt_shell_, kMuted, 0);
+  lv_obj_set_style_radius(batt_shell_, 2, 0);
+  lv_obj_align(batt_shell_, LV_ALIGN_RIGHT_MID, -10, 0);
+  lv_obj_t* cap = box(bar, 0, 0, 2, 5, kMuted);
+  lv_obj_align_to(cap, batt_shell_, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
+  batt_fill_ = box(batt_shell_, 2, 2, 0, 7, kOk);
+  batt_bolt_ = text(batt_shell_, &buddy_font_11, kFg);
+  lv_label_set_text(batt_bolt_, "+");
+  lv_obj_center(batt_bolt_);
   bar_right_ = text(bar, &buddy_font_11, kMuted);
   lv_label_set_text(bar_right_, "");
-  lv_obj_align(bar_right_, LV_ALIGN_RIGHT_MID, -8, 0);
+  lv_obj_align_to(bar_right_, batt_shell_, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+  for (auto* o : {batt_shell_, cap}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_set_user_data(batt_shell_, cap);
 
   for (auto* o : {fx_alert_, fx_zzz_, fx_spark_[0], fx_spark_[1]}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   refresh();
@@ -665,12 +687,25 @@ void set_link(const char* status, bool connected) {
 }
 
 void set_battery(int percent, bool charging) {
+  battery_ = percent;
+  charging_ = charging;
+  auto* cap = static_cast<lv_obj_t*>(lv_obj_get_user_data(batt_shell_));
   if (percent < 0) {
     lv_label_set_text(bar_right_, "");
+    lv_obj_add_flag(batt_shell_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cap, LV_OBJ_FLAG_HIDDEN);
     return;
   }
-  lv_label_set_text_fmt(bar_right_, charging ? "bateria %d%% +" : "bateria %d%%", percent);
+  lv_obj_remove_flag(batt_shell_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_remove_flag(cap, LV_OBJ_FLAG_HIDDEN);
+  const lv_color_t c = percent <= 15 ? kBad : percent <= 40 ? kWarn : kOk;
+  lv_obj_set_width(batt_fill_, 18 * (percent > 100 ? 100 : percent) / 100);
+  lv_obj_set_style_bg_color(batt_fill_, c, 0);
+  if (charging) lv_obj_remove_flag(batt_bolt_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(batt_bolt_, LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text_fmt(bar_right_, "%d%%", percent);
   lv_obj_set_style_text_color(bar_right_, percent <= 15 && !charging ? kBad : kMuted, 0);
+  lv_obj_align_to(bar_right_, batt_shell_, LV_ALIGN_OUT_LEFT_MID, -6, 0);
+  refresh();
 }
 
 void loop() {

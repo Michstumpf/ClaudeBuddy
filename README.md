@@ -100,6 +100,7 @@ Prioridade, da menor para a maior: padrões do código < `config.toml` < variáv
 
 - **Piadas:** de vez em quando (padrão: a cada ~45 min, com variação) o Buddy conta uma piada num balão e, se ativado, em voz alta. O Claude Haiku escreve piadas curtas que às vezes comentam o momento (hora, clima, quantas sessões trabalham — só contagens, nunca nomes, prompts ou respostas); sem chave ou se a API falhar, usa uma lista local. Só com o Buddy tranquilo: nunca com aprovação pendente, sessão esperando ou no modo noite, e só com um Buddy conectado.
 - **Clima:** temperatura de fora (Open-Meteo, gratuito, sem chave) no canto do rosto, atualizada a cada 15 min. A **cidade** se escolhe no painel do simulador ("Cidade do clima"; aceita "São José, SC" para desempatar, e prioriza cidades do Brasil): o hub procura antes de aceitar e mantém a anterior se não achar. Sem cidade escolhida, ou com a busca fora do ar, usa a cidade padrão do `config.toml` (Canoas).
+- **Bateria:** placas com bateria (CoreS3) mostram um ícone na barra de baixo (verde, amarelo até 40%, vermelho até 15%, "+" carregando) e o reportam ao hub a cada 30 s. Com 10% ou menos, o rosto pede "bateria fraca, me carrega?"; o hub avisa no Ubuntu (notificação) ao cair para 15% e 5%; o brilho cai com a bateria baixa e no modo noite. O painel do simulador tem uma "Bateria (simulada)" para testar tudo sem o hardware.
 - **Visual (skin):** em ⚙ → "Visual": **Clássico** (o mascote inteiro) ou **Só os olhos**, para quando o Buddy estiver numa carcaça com o formato do mascote. Nessa skin a tela fica na cor do corpo e o estado aparece pela cor do fundo: laranja (normal), amarelo (esperando você), verde (terminou), cinza (offline), mais escuro à noite.
 - **Tamanho real:** o painel do simulador tem um botão que mostra a tela no tamanho físico do CoreS3 (2", 40,6 mm de largura), com calibração por um cartão de crédito.
 - **Configurações (⚙ na lista de sessões):** piadas ligadas/desligadas, falar as piadas, intervalo (15/30/45/60/120 min), temperatura e "contar uma agora". Salvas em `~/.config/claude-buddy/prefs.json`.
@@ -159,6 +160,7 @@ Buddy → hub:
 - `{"type":"decision","id":"…","behavior":"allow|deny","via":"touch|voice"}`
 - `{"type":"dictate","session_id":"…","text":"…"}`
 - `{"type":"ping"}`
+- `{"type":"battery","percent":0-100,"charging":bool}` (placas com bateria, a cada 30 s): o hub repassa no estado (`battery`) e avisa no Ubuntu ao cair para 15% e 5%.
 
 Hub → Buddy também: `{"type":"speech","id":"…","session":"…","text":"…","url":"/api/speech/…"}` (resposta falada; o WAV pede `?token=`).
 

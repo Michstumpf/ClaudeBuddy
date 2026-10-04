@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse, Response
 
 from .config import Settings
 from .dictation import make_sender
+from .battery import BatteryWatch, notify_desktop
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
 from .prefs import Prefs
@@ -57,6 +58,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     jokes = JokeTeller()
     hub.extra["settings"] = prefs.values
     hub.extra["weather"] = None
+    battery = BatteryWatch()
+    hub.extra["battery"] = None
     clips: OrderedDict[str, bytes] = OrderedDict()  # recent spoken replies, for devices
     # When several Buddies are connected (e.g. the device plus a simulator tab),
     # only the most recently used one speaks; otherwise the same reply plays
@@ -314,7 +317,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             while True:
                 msg = json.loads(await ws.receive_text())
                 kind = msg.get("type")
-                if kind != "ping":  # a touch, a decision, a dictation: this is the Buddy in use
+                if kind not in ("ping", "battery"):  # a touch, a decision, a dictation: the Buddy in use
                     last_active[ws] = time.time()
                     if kind == "touch" and hub.night:
                         await set_night(False, "touch")
@@ -330,6 +333,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         await hub.notify(None)
                     if city and " ".join(str(city).split()) != prefs["city"]:
                         await change_city(ws, " ".join(str(city).split()))
+                elif kind == "battery":
+                    alert = battery.update(msg.get("percent", 0), msg.get("charging", False))
+                    hub.extra["battery"] = battery.last
+                    if alert:
+                        asyncio.get_running_loop().run_in_executor(None, notify_desktop, alert)
+                    await hub.notify(None)
                 elif kind == "joke_now":
                     asyncio.get_running_loop().create_task(tell_joke())
                 if kind == "decision":

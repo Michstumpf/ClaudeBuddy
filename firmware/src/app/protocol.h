@@ -25,5 +25,6 @@ std::string touch();
 std::string settings(const Settings& s);
 std::string joke_now();
 std::string ping();
+std::string battery(int percent, bool charging);
 
 }  // namespace app

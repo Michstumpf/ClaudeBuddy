@@ -106,6 +106,14 @@ std::string touch() { return R"({"type":"touch"})"; }
 std::string joke_now() { return R"({"type":"joke_now"})"; }
 std::string ping() { return R"({"type":"ping"})"; }
 
+std::string battery(int percent, bool charging) {
+  JsonDocument doc;
+  doc["type"] = "battery";
+  doc["percent"] = percent;
+  doc["charging"] = charging;
+  return dump(doc);
+}
+
 std::string settings(const Settings& s) {
   JsonDocument doc;
   doc["type"] = "settings";

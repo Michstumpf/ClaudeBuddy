@@ -44,6 +44,10 @@ def tap(x, y):
     return ("tap", x, y)
 
 
+def battery(percent, charging=False):
+    return ("battery", percent, charging)
+
+
 def expect(text):
     """Wait until the firmware prints this on serial (e.g. what it sends to the hub)."""
     return ("expect", text)
@@ -77,6 +81,8 @@ CASES = [
     ("14-olhos-trabalhando", [send(state(session("DataHub Sharing Chat", "working"), settings={**SETTINGS, "skin": "eyes"}))], 900),
     ("15-olhos-esperando", [send(state(session("DataHub Sharing Chat", "waiting"), settings={**SETTINGS, "skin": "eyes"}))], 900),
     ("16-olhos-noite", [send(state(session("DataHub Sharing Chat", "idle"), night=True, settings={**SETTINGS, "skin": "eyes"}))], 900),
+    ("17-bateria-carregando", [send(state(session("DataHub Sharing Chat", "idle"))), battery(80, True)], 900),
+    ("18-bateria-fraca", [battery(8)], 900),
 ]
 
 
@@ -90,6 +96,10 @@ def build_scenario() -> None:
                 # json.dumps escapes non-ASCII (é...) exactly like the hub does
                 steps.append("  - write-serial: |\n      " + json.dumps(m, separators=(",", ":")))
                 steps.append(f'  - wait-serial: "rx: {"joke" if m["type"] == "joke" else "state"}"')
+            elif action[0] == "battery":
+                steps.append("  - write-serial: |\n      " + json.dumps(
+                    {"type": "_battery", "percent": action[1], "charging": action[2]}, separators=(",", ":")))
+                steps.append(f'  - wait-serial: "rx: battery {action[1]}"')
             elif action[0] == "tap":
                 steps.append("  - write-serial: |\n      " + json.dumps({"type": "_tap", "x": action[1], "y": action[2]}, separators=(",", ":")))
                 steps.append(f'  - wait-serial: "rx: tap {action[1]},{action[2]}"')

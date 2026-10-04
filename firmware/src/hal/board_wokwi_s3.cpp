@@ -39,6 +39,7 @@ bool touch(int& x, int& y) {
 
 int battery_percent() { return -1; }
 bool charging() { return false; }
+void set_brightness(uint8_t) {}
 
 }  // namespace hal::board
 #endif

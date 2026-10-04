@@ -75,7 +75,7 @@ Aprendizados da validação:
 
 ## Ideias aprovadas (backlog)
 
-Feito em 2026-10-02: skin "só os olhos" (simulador + firmware), cidade do clima configurável, `config.toml`, tamanho real no simulador.
+Feito em 2026-10-03: bateria (ícone, aviso na tela, alerta no Ubuntu em 15%/5%, brilho menor). Feito em 2026-10-02: skin "só os olhos" (simulador + firmware), cidade do clima configurável, `config.toml`, tamanho real no simulador.
 
 Feito: piadas no balão (faladas, com opção de desligar), temperatura de fora, tela de configurações (2026-10-01).
 

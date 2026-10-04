@@ -162,6 +162,14 @@
   .calib .card { height: 10px; background: var(--accent); border-radius: 3px; margin: 6px 0; }
   .panel input[type=range] { padding: 0; }
   .result { font-size: 12px; color: var(--muted); }
+  .batt { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; }
+  .batt.hide { display: none; }
+  .batt .cell { position: relative; width: 22px; height: 11px; border: 1px solid #b9b4ad; border-radius: 2px; }
+  .batt .cell::after { content: ""; position: absolute; right: -4px; top: 3px; width: 2px; height: 5px; background: #b9b4ad; }
+  .batt .fill { position: absolute; left: 1px; top: 1px; bottom: 1px; background: var(--ok); }
+  .batt .bolt { position: absolute; inset: -2px 0 0; text-align: center; font-size: 10px; color: #fff; }
+  .batt.low { color: var(--bad); }
+  .batt.low .cell { border-color: var(--bad); }
 </style>
 </head>
 <body>
@@ -252,7 +260,7 @@
         </div>
       </div>
 
-      <div class="bar"><span id="barLeft">—</span><span id="barRight"></span></div>
+      <div class="bar"><span id="barLeft">—</span><span><span class="batt hide" id="batt"><span id="battPct"></span><span class="cell"><span class="fill" id="battFill"></span><span class="bolt" id="battBolt">+</span></span></span><span id="barRight"></span></span></div>
     </div></div></div>
     <div class="mic-holes"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
@@ -274,6 +282,13 @@
       <div class="card" id="calibCard"></div>
       <input type="range" id="calibRange" min="2" max="8" step="0.05">
     </div>
+  </section>
+  <section>
+    <h2>Bateria (simulada)</h2>
+    <p class="result">Finge ser o Buddy reportando a bateria ao hub, para testar o ícone, o aviso na tela e o alerta do Ubuntu (15% e 5%).</p>
+    <input type="range" id="fakeBatt" min="0" max="100" value="80">
+    <label class="result"><input type="checkbox" id="fakeCharging" style="width:auto"> carregando</label>
+    <button id="fakeBattSend" style="margin-top:6px">Enviar <span id="fakeBattVal">80</span>%</button>
   </section>
   <section>
     <h2>Cidade do clima</h2>
@@ -367,6 +382,8 @@ function mood() {
   if (ss.some(s => s.status === "waiting")) return ["s-wait", "alguém precisa de você!"];
   if (lastEvent && lastEvent.kind === "done" && Date.now() - lastEventAt < 8000) return ["s-done", doneLabel(lastEvent)];
   if (ss.some(s => s.status === "working")) return ["s-work", null];  // label driven by the spinner
+  const b = state.battery;
+  if (b && b.percent <= 10 && !b.charging) return [ss.length ? "s-idle" : "s-sleep", "bateria fraca, me carrega?"];
   if (ss.length) return ["s-idle", "tudo tranquilo"];
   return ["s-sleep", "zzz"];
 }
@@ -385,6 +402,15 @@ function render() {
   $("barLeft").textContent = connected ? `▶ ${counts.working || 0}  ⏸ ${counts.waiting || 0}  ✓ ${counts.done || 0}` : "offline";
   $("barRight").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+  const b = state.battery;
+  $("batt").classList.toggle("hide", !b);
+  if (b) {
+    $("battPct").textContent = `${b.percent}%`;
+    $("battFill").style.width = `${Math.round(18 * b.percent / 100)}px`;
+    $("battFill").style.background = b.percent <= 15 ? "var(--bad)" : b.percent <= 40 ? "var(--warn)" : "var(--ok)";
+    $("battBolt").style.display = b.charging ? "" : "none";
+    $("batt").classList.toggle("low", b.percent <= 15 && !b.charging);
+  }
   const skin = (state.settings && state.settings.skin) || "classic";
   $("screen").classList.toggle("skin-eyes", skin === "eyes");
   const wx = state.weather;
@@ -713,6 +739,10 @@ function applySize() {
 $("realSize").onclick = () => { realSize = !realSize; store.set("buddyRealSize", realSize ? "1" : "0"); applySize(); };
 $("calibRange").oninput = () => { pxPerMm = parseFloat($("calibRange").value); store.set("buddyPxPerMm", pxPerMm); applySize(); };
 applySize();
+
+// ---------- fake battery (the simulator has none; acts like the device reporting it) ----------
+$("fakeBatt").oninput = () => { $("fakeBattVal").textContent = $("fakeBatt").value; };
+$("fakeBattSend").onclick = () => send({ type: "battery", percent: +$("fakeBatt").value, charging: $("fakeCharging").checked });
 
 // ---------- weather city (typed here: a 2" screen is no place for a keyboard) ----------
 $("citySave").onclick = () => {

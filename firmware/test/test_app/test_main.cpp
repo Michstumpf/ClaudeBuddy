@@ -74,6 +74,7 @@ void test_outgoing_messages() {
                            decision("p1", true).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"decision","id":"p1","behavior":"deny","via":"touch"})",
                            decision("p1", false).c_str());
+  TEST_ASSERT_EQUAL_STRING(R"({"type":"battery","percent":42,"charging":true})", battery(42, true).c_str());
   Settings s;
   s.joke_voice = false;
   TEST_ASSERT_EQUAL_STRING(
