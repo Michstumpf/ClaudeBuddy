@@ -41,5 +41,16 @@ int battery_percent() { return -1; }
 bool charging() { return false; }
 void set_brightness(uint8_t) {}
 
+// No audio or sensors in this simulation.
+bool record_start() { return false; }
+void record_loop() {}
+size_t record_stop(const int16_t** samples) {
+  *samples = nullptr;
+  return 0;
+}
+bool play_wav(const uint8_t*, size_t) { return false; }
+bool playing() { return false; }
+Sensors read_sensors() { return {}; }
+
 }  // namespace hal::board
 #endif

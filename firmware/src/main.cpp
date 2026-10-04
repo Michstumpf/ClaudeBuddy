@@ -3,9 +3,14 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+#include <lvgl.h>
+
 #include "app/protocol.h"
 #include "hal/board.h"
 #include "hal/lvgl_port.h"
+#include <vector>
+
+#include "net/audio_http.h"
 #include "net/hub_link.h"
 #include "net/serial_link.h"
 #include "ui/ui.h"
@@ -63,13 +68,59 @@ static void on_status(const char* status, bool connected) {
 }
 
 static bool night_ = false;
+static net::HubConfig cfg_;
+static bool near_ = false;
+static int light_ = -1;
 
 // Backlight: dim at night and on low battery (CoreS3; no-op in Wokwi).
 static void update_brightness(int battery, bool charging) {
-  uint8_t level = 160;
+  // Ambient light sets the base (dim room, dim screen); someone close wakes it.
+  uint8_t level = light_ < 0 ? 160 : light_ < 20 ? 60 : light_ < 200 ? 120 : 200;
+  if (near_) level = level < 160 ? 160 : level;
   if (battery >= 0 && battery <= 15 && !charging) level = 70;
   if (night_) level = 20;
   hal::board::set_brightness(level);
+}
+
+// Spoken replies, jokes and notices come as a URL on the hub: fetch and play.
+static void play(const std::string& url) {
+  if (!hal::board::kHasAudio || url.empty() || night_) return;
+  std::vector<uint8_t> wav;
+  if (net::download(cfg_, url, wav)) hal::board::play_wav(wav.data(), wav.size());
+}
+
+// ---- push-to-talk on the device (CoreS3 mic) ----
+static void start_dictation() {
+  if (!hal::board::record_start()) {
+    ui::on_notice("Não consegui ligar o microfone.");
+    return;
+  }
+  ui::set_listening(true);
+}
+
+static void stop_dictation(const std::string& session_id) {
+  const int16_t* pcm = nullptr;
+  const size_t samples = hal::board::record_stop(&pcm);
+  ui::set_listening(false);
+  if (samples < 16000 * 4 / 10) {  // < 0.4 s: a tap, not speech
+    ui::on_notice("Muito curto: segure enquanto fala.");
+    return;
+  }
+  ui::show_message("Transcrevendo…", "");
+  net::Transcription t = net::transcribe(cfg_, pcm, samples);
+  ui::show_message("", "");  // clears the overlay (see show_message)
+  if (!t.ok) {
+    ui::on_notice(("Não consegui transcrever. " + t.detail).c_str());
+  } else if (t.handled) {
+    ui::on_notice(t.detail);  // "enviado para HIPAA", "status de DataHub"…
+  } else if (t.text.empty()) {
+    ui::on_notice("Não ouvi nada.");
+  } else if (!session_id.empty()) {
+    send_to_hub(app::dictate(session_id, t.text));
+    ui::on_notice("Enviado: " + t.text);
+  } else {
+    ui::on_notice("Para ditar numa sessão, abra-a e segure Ditar. Ou diga: manda para a <sessão>: …");
+  }
 }
 
 static void on_message(const std::string& json) {
@@ -88,10 +139,16 @@ static void on_message(const std::string& json) {
     case app::MessageType::Joke:
       ui::on_joke(in.text);
       Serial.println("rx: joke");
+      play(in.url);
+      break;
+    case app::MessageType::Speech:
+      Serial.println("rx: speech");
+      play(in.url);
       break;
     case app::MessageType::Notice:
       ui::on_notice(in.text);
       Serial.println("rx: notice");
+      play(in.url);
       break;
     default:
       break;
@@ -109,16 +166,43 @@ void setup() {
   ui::begin(send_to_hub);
   net::serial_begin(on_message);
   ui::set_setup_handler(open_setup_portal);
+  if (hal::board::kHasAudio) ui::set_dictation_handlers(start_dictation, stop_dictation);
 #if !defined(BOARD_WOKWI_S3)  // Wokwi can't host an access point: keep the serial link there
   if (!net::configured()) open_setup_portal();  // first boot: set up from the phone
 #endif
-  net::hub_begin(net::load_config(), on_message, on_status);
+  cfg_ = net::load_config();
+  net::hub_begin(cfg_, on_message, on_status);
   Serial.println("buddy: ready");
 }
 
 void loop() {
   net::serial_loop();
   net::hub_loop();
+  hal::board::record_loop();
+  if (hal::board::kHasSensors) {
+    static uint32_t sensors_at = 0, joke_at = 0;
+    static bool was_down = false;
+    if (millis() - sensors_at > 200) {
+      sensors_at = millis();
+      const hal::board::Sensors s = hal::board::read_sensors();
+      // Shake: ask for a joke (at most every 30 s).
+      if (s.shaken && millis() - joke_at > 30000) {
+        joke_at = millis();
+        send_to_hub(app::joke_now());
+      }
+      // Screen down on the desk: night mode; picked up: awake.
+      if (s.face_down != was_down) {
+        was_down = s.face_down;
+        send_to_hub(app::night(s.face_down));
+      }
+      if (s.near != near_ || (s.light >= 0 && abs(s.light - light_) > 30)) {
+        near_ = s.near;
+        if (s.light >= 0) light_ = s.light;
+        if (near_) lv_display_trigger_activity(nullptr);
+        update_brightness(hal::board::battery_percent(), hal::board::charging());
+      }
+    }
+  }
   // Battery: every 30 s, or right away when the charger is plugged/unplugged.
   static uint32_t battery_at = 0;
   static bool was_charging = false;

@@ -20,6 +20,10 @@ void set_link(const char* status, bool connected);
 void set_setup_handler(void (*handler)());
 // A full-screen two-line message (setup portal instructions), drawn right away.
 void show_message(const char* line1, const char* line2);
+// Push-to-talk: the board has a mic. "Ditar" in a session view (hold, speak,
+// release) and holding the face (voice commands) call these.
+void set_dictation_handlers(void (*start)(), void (*stop)(const std::string& session_id));
+void set_listening(bool on);  // the face says "ouvindo… solte para enviar"
 void loop();  // animations and timeouts; call often
 
 }  // namespace ui

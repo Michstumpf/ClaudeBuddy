@@ -59,3 +59,13 @@ def test_pomodoro_from_the_buddy_sets_focus_and_notices():
         ws.send_json({"type": "pomodoro", "action": "stop"})
         state = next(m for m in (ws.receive_json() for _ in range(3)) if m["type"] == "state")
         assert state["focus"] is None and state["pomodoro"] is None
+
+
+def test_device_can_put_the_buddy_to_sleep_and_wake_it():
+    app = create_app(Settings(token=TOKEN, dictation_backend="dry-run"))
+    with TestClient(app) as c, c.websocket_connect(f"/ws?token={TOKEN}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "night", "on": True})
+        assert next(m for m in (ws.receive_json() for _ in range(3)) if m["type"] == "state")["night"] is True
+        ws.send_json({"type": "night", "on": False})
+        assert next(m for m in (ws.receive_json() for _ in range(3)) if m["type"] == "state")["night"] is False

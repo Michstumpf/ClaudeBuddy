@@ -201,6 +201,7 @@ Buddy → hub:
 - `{"type":"decision","id":"…","behavior":"allow|deny","via":"touch|voice"}`
 - `{"type":"dictate","session_id":"…","text":"…"}`
 - `{"type":"ping"}`
+- `{"type":"night","on":bool}` (tela virada para baixo / levantada), `{"type":"pomodoro","action":"start|stop"}`, `{"type":"settings","values":{…}}`, `{"type":"joke_now"}`, `{"type":"touch"}`
 - `{"type":"battery","percent":0-100,"charging":bool}` (placas com bateria, a cada 30 s): o hub repassa no estado (`battery`) e avisa no Ubuntu ao cair para 15% e 5%.
 
 Hub → Buddy também: `{"type":"speech","id":"…","session":"…","text":"…","url":"/api/speech/…"}` (resposta falada; o WAV pede `?token=`).

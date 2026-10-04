@@ -64,6 +64,18 @@ Configuração, do menor para o maior peso:
 
 **Para o CoreS3 alcançar o hub** ele precisa escutar na rede local (`--host 0.0.0.0`, hoje é só `127.0.0.1`). Isso fica para quando a placa chegar, com o cuidado de aceitar só a rede de casa: o Ubuntu é um notebook de trabalho que pode estar em outras redes.
 
+## CoreS3: voz e sensores
+
+- **Ditar numa sessão:** na tela da sessão, segure "Segure para ditar", fale e solte (precisa da sessão no tmux). O áudio vai ao hub (`POST /api/transcribe`) e o texto à sessão.
+- **Comandos de voz:** segure o rosto, fale e solte — "manda para a HIPAA: …", "o que a DataHub está fazendo?", "pomodoro", "pode aprovar" (os mesmos do F9).
+- **Falas:** respostas faladas, piadas e avisos com áudio tocam no alto-falante do Buddy (baixados de `/api/speech/<id>`); nada toca no modo noite.
+- **Chacoalhar** pede uma piada (no máximo a cada 30 s). **Tela virada para baixo** = modo noite; levantar acorda (`{"type":"night"}`).
+- **Proximidade** acende a tela; **luz ambiente** ajusta o brilho (sala escura, tela fraca).
+
+Microfone e alto-falante dividem o barramento I2S do CoreS3: gravar interrompe uma fala. O sensor de proximidade/luz (LTR-553) não tem driver na M5Unified; `board_m5_cores3.cpp` configura os poucos registradores necessários. **Limiares (proximidade, chacoalhar, tela para baixo) são chutes iniciais, para ajustar na placa.**
+
+"Ei, Buddy" (palavra de ativação) fica para a placa: o ESP-SR do S3 só reconhece palavras treinadas pela Espressif ("Hi ESP"…); um "Ei, Buddy" próprio exigiria treinar um modelo. Por ora, segurar o rosto faz esse papel.
+
 ## O que o Wokwi não cobre (fica para a placa real)
 
 - Áudio (microfone I2S, alto-falante).

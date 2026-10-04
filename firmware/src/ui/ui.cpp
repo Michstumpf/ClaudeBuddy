@@ -46,6 +46,10 @@ lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *app
 constexpr int kPrefs = 9;
 lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro, wifi
 void (*setup_handler_)() = nullptr;
+void (*dictate_start_)() = nullptr;
+void (*dictate_stop_)(const std::string&) = nullptr;
+bool listening_ = false;
+lv_obj_t* dictate_btn_ = nullptr;
 lv_obj_t* bar_mid_;           // pomodoro countdown
 uint32_t pomo_at_ = 0;        // millis() when the countdown was received
 int pomo_secs_ = 0;
@@ -245,6 +249,7 @@ void refresh() {
   if (!connected_ && !link_status_.empty()) v.label = link_status_;
   if (battery_ >= 0 && battery_ <= 10 && !charging_ && (v.mood == app::Mood::Idle || v.mood == app::Mood::Sleep))
     v.label = "bateria fraca, me carrega?";
+  if (listening_) v = {app::Mood::Talk, "ouvindo… solte para enviar"};
   set_mood(v);
 
   if (state_.weather.valid && state_.settings.weather)
@@ -284,6 +289,14 @@ void animate() {
 }
 
 void show(View v);
+
+void on_face_hold(lv_event_t*) {
+  if (dictate_start_ && !listening_) dictate_start_();
+}
+
+void on_face_release(lv_event_t*) {
+  if (listening_ && dictate_stop_) dictate_stop_("");
+}
 
 void on_face_tap(lv_event_t*) {
   if (settling()) return;
@@ -424,6 +437,12 @@ void fill_list() {
 
 // ---- one session ----
 
+void on_dictate_btn(lv_event_t* e) {
+  const lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_PRESSED && dictate_start_ && !listening_) dictate_start_();
+  if (code == LV_EVENT_RELEASED && listening_ && dictate_stop_) dictate_stop_(current_session_);
+}
+
 void build_session(lv_obj_t* v) {
   sess_title_ = text(v, &buddy_font_13, kFg);
   lv_label_set_long_mode(sess_title_, LV_LABEL_LONG_DOT);
@@ -436,9 +455,10 @@ void build_session(lv_obj_t* v) {
   lv_label_set_long_mode(sess_msg_, LV_LABEL_LONG_WRAP);
   button(v, "◀ Voltar", kBtn, go, to(kList));
   lv_obj_set_pos(lv_obj_get_child(v, -1), 8, 178);
-  lv_obj_t* dictate = button(v, "Ditar: em breve", kBtn, go, to(kSession));
-  lv_obj_align(dictate, LV_ALIGN_TOP_RIGHT, -8, 178);
-  lv_obj_add_state(dictate, LV_STATE_DISABLED);  // needs the board's microphone
+  dictate_btn_ = button(v, "Segure para ditar", kBtnInfo, on_dictate_btn);
+  lv_obj_add_event_cb(dictate_btn_, on_dictate_btn, LV_EVENT_PRESSED, nullptr);
+  lv_obj_add_event_cb(dictate_btn_, on_dictate_btn, LV_EVENT_RELEASED, nullptr);
+  lv_obj_align(dictate_btn_, LV_ALIGN_TOP_RIGHT, -8, 178);
 }
 
 void fill_session() {
@@ -446,6 +466,10 @@ void fill_session() {
     if (s.id != current_session_) continue;
     lv_label_set_text_fmt(sess_title_, "%s · %s", s.name.c_str(), status_name(s.status));
     lv_label_set_text(sess_msg_, s.last_message.empty() ? "(sem resposta ainda)" : s.last_message.c_str());
+    // Dictation needs a mic on the board and the session in tmux (the hub types into its pane).
+    const bool can = dictate_start_ && s.has_tmux;
+    set_button_text(dictate_btn_, !dictate_start_ ? "Ditar: sem microfone" : s.has_tmux ? "Segure para ditar" : "Ditar: sem tmux");
+    if (can) lv_obj_remove_state(dictate_btn_, LV_STATE_DISABLED); else lv_obj_add_state(dictate_btn_, LV_STATE_DISABLED);
     return;
   }
   show(kList);  // the session went away
@@ -635,7 +659,10 @@ void begin(Sender send) {
   for (auto& v : views_) v = make_view(scr);
   face_ = views_[kFace];
   lv_obj_add_flag(face_, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_add_event_cb(face_, on_face_tap, LV_EVENT_CLICKED, nullptr);
+  // A tap opens the list; holding it is push-to-talk for voice commands.
+  lv_obj_add_event_cb(face_, on_face_tap, LV_EVENT_SHORT_CLICKED, nullptr);
+  lv_obj_add_event_cb(face_, on_face_hold, LV_EVENT_LONG_PRESSED, nullptr);
+  lv_obj_add_event_cb(face_, on_face_release, LV_EVENT_RELEASED, nullptr);
   build_list(views_[kList]);
   build_session(views_[kSession]);
   build_approve(views_[kApprove]);
@@ -760,9 +787,24 @@ void set_link(const char* status, bool connected) {
 
 void set_setup_handler(void (*handler)()) { setup_handler_ = handler; }
 
+void set_dictation_handlers(void (*start)(), void (*stop)(const std::string&)) {
+  dictate_start_ = start;
+  dictate_stop_ = stop;
+}
+
+void set_listening(bool on) {
+  listening_ = on;
+  refresh();
+  lv_refr_now(nullptr);
+}
+
 void show_message(const char* line1, const char* line2) {
   lv_obj_t* layer = lv_layer_top();
   lv_obj_clean(layer);
+  if (!*line1 && !*line2) {  // empty message: just remove the overlay
+    lv_refr_now(nullptr);
+    return;
+  }
   lv_obj_t* bg = box(layer, 0, 0, 320, 240, kBg);
   lv_obj_t* a = text(bg, &buddy_font_13, kFg);
   lv_label_set_text(a, line1);

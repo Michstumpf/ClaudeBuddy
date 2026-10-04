@@ -75,6 +75,7 @@ Aprendizados da validação:
 
 ## Ideias aprovadas (backlog)
 
+Feito em 2026-10-04: avisos + pomodoro + tarefa longa + modo foco; comandos de voz (mandar para sessão, status, aprovar); resumo do dia + uso do Claude no mês; GitHub; agenda (iCal); Jira/Slack (sem credenciais ainda); hub com allowlist de redes (hoje: local + Tailscale); ditado no Windows; firmware: portal Buddy-setup, OTA, voz no CoreS3 (ditar, comandos, falas), sensores (chacoalhar, tela para baixo, proximidade, luz). Pendentes de você: celular (Tailscale + HTTPS), URL iCal da agenda, tokens Jira/Slack, Tailscale + instalador no notebook Windows; pendentes do hardware: validar tudo do CoreS3, ajustar limiares, "Ei, Buddy".
 Feito em 2026-10-03: bateria (ícone, aviso na tela, alerta no Ubuntu em 15%/5%, brilho menor). Feito em 2026-10-02: skin "só os olhos" (simulador + firmware), cidade do clima configurável, `config.toml`, tamanho real no simulador.
 
 Feito: piadas no balão (faladas, com opção de desligar), temperatura de fora, tela de configurações (2026-10-01).

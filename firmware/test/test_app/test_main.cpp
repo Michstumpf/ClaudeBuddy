@@ -91,6 +91,9 @@ void test_outgoing_messages() {
                            decision("p1", false).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"battery","percent":42,"charging":true})", battery(42, true).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"pomodoro","action":"start"})", pomodoro(true).c_str());
+  TEST_ASSERT_EQUAL_STRING(R"({"type":"dictate","session_id":"a","text":"roda os testes"})",
+                           dictate("a", "roda os testes").c_str());
+  TEST_ASSERT_EQUAL_STRING(R"({"type":"night","on":true})", night(true).c_str());
   Settings s;
   s.joke_voice = false;
   TEST_ASSERT_EQUAL_STRING(

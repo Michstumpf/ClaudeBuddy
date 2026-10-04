@@ -130,6 +130,16 @@ std::string battery(int percent, bool charging) {
   return dump(doc);
 }
 
+std::string dictate(const std::string& session_id, const std::string& text) {
+  JsonDocument doc;
+  doc["type"] = "dictate";
+  doc["session_id"] = session_id;
+  doc["text"] = text;
+  return dump(doc);
+}
+
+std::string night(bool on) { return on ? R"({"type":"night","on":true})" : R"({"type":"night","on":false})"; }
+
 std::string pomodoro(bool start) {
   return start ? R"({"type":"pomodoro","action":"start"})" : R"({"type":"pomodoro","action":"stop"})";
 }

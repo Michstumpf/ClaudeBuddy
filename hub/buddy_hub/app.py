@@ -615,6 +615,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if alert:
                         asyncio.get_running_loop().run_in_executor(None, notify_desktop, alert)
                     await hub.notify(None)
+                elif kind == "night":  # the device itself: screen face down on the desk / picked up
+                    await set_night(bool(msg.get("on")), "device")
                 elif kind == "pomodoro":
                     await pomodoro_command("start" if msg.get("action") == "start" else "stop")
                 elif kind == "joke_now":

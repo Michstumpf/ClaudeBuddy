@@ -27,5 +27,7 @@ std::string joke_now();
 std::string ping();
 std::string battery(int percent, bool charging);
 std::string pomodoro(bool start);
+std::string dictate(const std::string& session_id, const std::string& text);
+std::string night(bool on);  // the device itself asks for night mode (face down)
 
 }  // namespace app
