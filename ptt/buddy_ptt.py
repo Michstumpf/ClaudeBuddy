@@ -261,11 +261,16 @@ class PushToTalk:
         with self.busy:
             self.notify.show("⏳ Transcrevendo…")
             try:
-                text = self.transcribe(audio)
+                result = self.transcribe(audio)
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 log.warning("transcription failed: %s", exc)
                 self.notify.show("✕ Não consegui transcrever", str(exc), 4000)
                 return
+            if result.get("handled"):  # a voice intent ("manda para a HIPAA: …") the hub took care of
+                log.info("handled by the hub")
+                self.notify.show("✓ Claude Buddy", result.get("detail", ""), 3000)
+                return
+            text = (result.get("text") or "").strip()
             if not text or HALLUCINATIONS.search(text):
                 self.notify.show("Claude Buddy", "não ouvi nada", 1500)
                 return
@@ -293,7 +298,7 @@ class PushToTalk:
             if special:
                 time.sleep(TYPE_SETTLE)
 
-    def transcribe(self, audio: bytes) -> str:
+    def transcribe(self, audio: bytes) -> dict:
         req = urllib.request.Request(
             f"{HUB}/api/transcribe", data=audio, method="POST",
             headers={"Content-Type": "audio/wav", "X-Buddy-Token": token()},
@@ -301,7 +306,7 @@ class PushToTalk:
         with urllib.request.urlopen(req, timeout=120) as resp:
             result = json.loads(resp.read())
         log.info("transcribed %.1fs in %.1fs", result.get("audio_seconds", 0), result.get("took_seconds", 0))
-        return (result.get("text") or "").strip()
+        return result
 
 
 def main() -> None:

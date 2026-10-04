@@ -30,6 +30,7 @@ from fastapi.responses import FileResponse, Response
 from .config import Settings
 from .dictation import make_sender
 from .battery import BatteryWatch, notify_desktop
+from . import intents
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
 from .pomodoro import Pomodoro
@@ -238,14 +239,62 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.info("%s (%s)", "night mode" if night else "awake", why)
             await hub.notify({"kind": "night" if night else "morning", "session": ""})
 
-    async def apply_voice_command(text: str) -> None:
+    STATUS_PT = {"working": "trabalhando", "waiting": "esperando você", "done": "terminou",
+                 "idle": "parada", "offline": "offline"}
+
+    async def handle_intent(text: str) -> str | None:
+        """Voice intents (intents.py). Returns what was done, or None to type the text."""
+        live = [(sid, s.name) for sid, s in hub.sessions.items() if s.status != "offline"]
+        intent = intents.parse(text, live)
+        if intent is None:
+            return None
+        if intent.kind in ("approve", "deny"):
+            pending = list(hub.approvals.values())
+            if not pending:
+                return None  # probably an answer to the session itself: type it
+            if len(pending) > 1:
+                await send_notice(f"Tem {len(pending)} pedidos esperando: decide pelo toque.", "voice", speak=True)
+                return "vários pedidos: decida pelo toque"
+            a = pending[0]
+            if intent.kind == "approve" and a.dangerous:
+                await send_notice("Esse comando é perigoso: só aprovo pelo toque.", "voice", speak=True)
+                return "comando perigoso: aprove pelo toque"
+            hub.decide(a.id, "allow" if intent.kind == "approve" else "deny", via="voice")
+            word = "Aprovado" if intent.kind == "approve" else "Negado"
+            await send_notice(f"{word}: {a.tool_name} em {a.session_name}.", "voice")
+            return f"{word.lower()} ({a.session_name})"
+        session = hub.sessions.get(intent.session_id)
+        if session is None:
+            return None
+        if intent.kind == "send":
+            if not session.tmux_pane:
+                await send_notice(f"Não consigo escrever em {session.name}: ela não está no tmux.", "voice", speak=True)
+                return f"{session.name} não está no tmux"
+            hub.note_voice_text(intent.body)  # its answer gets spoken back
+            ok, why = sender.send(session.tmux_pane, intent.body)
+            await send_notice(f"Enviado para {session.name}." if ok else f"Falhou: {why}", "voice")
+            return f"enviado para {session.name}" if ok else why
+        if intent.kind == "status":
+            answer = hub.last_answers.get(session.id, "")
+            line = f"{session.name} está {STATUS_PT.get(session.status, session.status)}."
+            if answer:
+                summary = await summarizer.summarize(f"O que a sessão {session.name} está fazendo?", answer)
+                line += " " + (summary or speakable(answer))
+            await send_notice(line, "voice", speak=True)
+            return f"status de {session.name}"
+        return None
+
+    async def apply_voice_command(text: str) -> str | None:
+        """Short voice commands; returns what was done when the text must not be typed."""
         command = voice_command(text)
         if command in ("pomodoro_start", "pomodoro_stop"):
             await pomodoro_command("start" if command == "pomodoro_start" else "stop")
-        elif command == "night":
+            return "pomodoro " + ("iniciado" if command == "pomodoro_start" else "encerrado")
+        if command == "night":
             await set_night(True, "voice")
         elif hub.night:  # "bom dia", or simply talking to it again
             await set_night(False, "voice")
+        return None  # "boa noite"/"bom dia" are still typed: the session may answer them
 
     async def housekeeping() -> None:
         host = socket.gethostname()
@@ -343,8 +392,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail=str(exc))
         log.info("transcribed %.1fs of audio in %.1fs on %s",
                  result["audio_seconds"], result["took_seconds"], result.get("backend"))
-        hub.note_voice_text(result.get("text", ""))
-        await apply_voice_command(result.get("text", ""))
+        text = result.get("text", "")
+        hub.note_voice_text(text)
+        handled = await apply_voice_command(text)
+        detail = handled or await handle_intent(text)
+        if detail:  # the hub took care of it: nothing to type in the focused window
+            result.update({"text": "", "handled": True, "detail": detail})
         return result
 
     @app.get("/api/usage")

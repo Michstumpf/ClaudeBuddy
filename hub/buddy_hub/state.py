@@ -128,6 +128,9 @@ class Hub:
         # Question of each voice turn, for the spoken summary. Kept out of the
         # snapshot on purpose: the Buddy never gets prompt text.
         self.voice_questions: dict[str, str] = {}
+        # Full last answer per session (last_message is cut for the screen), for
+        # "o que a sessão X está fazendo?". Never sent to the Buddy.
+        self.last_answers: dict[str, str] = {}
         # Night mode ("boa noite"): sleeping face, no beeps, no speech.
         self.night = False
         # Extra top-level snapshot fields owned by the app (settings, weather).
@@ -204,6 +207,7 @@ class Hub:
             msg = (payload.get("last_assistant_message") or "").strip()
             if msg:
                 session.last_message = msg[:LAST_MESSAGE_MAX]
+                self.last_answers[session.id] = msg
             ui_event = {"kind": "done", "session": session.name}
             if session.voice_turn and msg and self.on_voice_reply:
                 asyncio.get_running_loop().create_task(self.on_voice_reply(session, msg))

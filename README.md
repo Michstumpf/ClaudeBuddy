@@ -146,6 +146,18 @@ curl -s http://<nome-do-desktop>:8766/health -H "X-Buddy-Token: $(cat ~/.config/
 
 Cada transcrição registra no log do hub onde rodou: `on remote:cuda` (GPU) ou `on cpu` (fallback, com o motivo).
 
+## Comandos de voz
+
+Ditando pelo F9 (ou pelo Buddy), o hub reconhece estes pedidos e cuida deles em vez de digitar o texto na janela em foco (`hub/buddy_hub/intents.py`; nomes de sessão comparados sem acento, pontuação ou espaços, e um começo do nome basta):
+
+| Diga | O que acontece |
+|---|---|
+| "Manda para a HIPAA: roda os testes" (também envia/pede/escreve…) | Entrega "roda os testes" na sessão HIPAA (precisa estar no tmux); a resposta dela volta falada. |
+| "O que a DataHub está fazendo?" / "Como está a HIPAA?" / "Status do git-d6" | O Buddy responde falando o estado e um resumo da última resposta dela. |
+| "Pode aprovar" / "Nega" | Decide o pedido de aprovação pendente — só se houver exatamente um e ele não for perigoso. Sem pedido pendente, a frase é digitada normalmente (pode ser uma resposta à sessão). |
+| "Pomodoro" / "Para o pomodoro" | Liga/desliga o pomodoro. |
+| "Boa noite" / "Bom dia" | Modo noite (e o texto também é digitado). |
+
 ## Comportamento das aprovações
 
 - O hook `PermissionRequest` só espera o Buddy **se houver um Buddy conectado**. Sem Buddy, devolve na hora e o diálogo normal aparece.
