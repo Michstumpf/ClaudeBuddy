@@ -56,6 +56,10 @@ Configuração, do menor para o maior peso:
    ```
    (Depois vem a configuração pelo celular, com a rede "Buddy-setup".)
 
+**Pelo celular (primeiro uso, ou ⚙ → "WiFi e hub" → Configurar):** o Buddy abre a rede WiFi **Buddy-setup**; conecte o celular, abra `192.168.4.1`, escolha o WiFi de casa e informe o IP do hub (o Ubuntu na rede de casa), a porta e o token. Ele salva e reinicia. (WiFiManager; não roda no Wokwi, que não cria pontos de acesso.)
+
+**Atualização sem cabo (OTA):** com o Buddy no WiFi, `BUDDY_DEVICE_IP=<ip do Buddy> BUDDY_HUB_TOKEN=$(cat ~/.config/claude-buddy/token) pio run -e m5_cores3_ota -t upload`. O token do hub é a senha; a tela mostra "atualizando o firmware…".
+
 **No Wokwi gratuito o WiFi funciona, mas o hub não é alcançável:** `host.wokwi.internal` depende do gateway privado, que é só dos planos pagos. O WebSocket é validado no CoreS3; no simulador, use a ponte serial.
 
 **Para o CoreS3 alcançar o hub** ele precisa escutar na rede local (`--host 0.0.0.0`, hoje é só `127.0.0.1`). Isso fica para quando a placa chegar, com o cuidado de aceitar só a rede de casa: o Ubuntu é um notebook de trabalho que pode estar em outras redes.

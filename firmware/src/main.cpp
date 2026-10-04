@@ -98,6 +98,8 @@ static void on_message(const std::string& json) {
   }
 }
 
+static void open_setup_portal() { net::run_setup_portal(ui::show_message); }
+
 void setup() {
   // Hub state messages run to a few KB; the default 256-byte RX buffer overflows
   // while LVGL is rendering and the JSON arrives truncated.
@@ -106,6 +108,10 @@ void setup() {
   hal::lvgl_begin();
   ui::begin(send_to_hub);
   net::serial_begin(on_message);
+  ui::set_setup_handler(open_setup_portal);
+#if !defined(BOARD_WOKWI_S3)  // Wokwi can't host an access point: keep the serial link there
+  if (!net::configured()) open_setup_portal();  // first boot: set up from the phone
+#endif
   net::hub_begin(net::load_config(), on_message, on_status);
   Serial.println("buddy: ready");
 }

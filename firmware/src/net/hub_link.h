@@ -23,4 +23,10 @@ void hub_begin(const HubConfig& cfg, MessageHandler on_message, StatusHandler on
 void hub_loop();
 bool hub_send(const std::string& json);  // false when not connected
 
+// Setup over the phone: opens the WiFi network "Buddy-setup" with a page to
+// pick the WiFi and enter the hub address and token, saves them and restarts.
+// Blocks until done; on_screen is told what to show meanwhile.
+void run_setup_portal(void (*on_screen)(const char* line1, const char* line2));
+bool configured();  // WiFi and hub set (otherwise the portal opens at boot)
+
 }  // namespace net

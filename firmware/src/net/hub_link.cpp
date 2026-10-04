@@ -1,9 +1,11 @@
 #include "hub_link.h"
 
 #include <Arduino.h>
+#include <ArduinoOTA.h>
 #include <Preferences.h>
 #include <WebSocketsClient.h>
 #include <WiFi.h>
+#include <WiFiManager.h>
 
 // Build-time defaults (secrets.ini, kept out of git; see secrets.ini.example).
 #ifndef BUDDY_WIFI_SSID
@@ -107,6 +109,12 @@ void hub_loop() {
       if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("hub: WiFi up (%s), hub at %s:%u\n", WiFi.localIP().toString().c_str(), cfg_.host.c_str(),
                       cfg_.port);
+        // Firmware updates over WiFi (pio run -e m5_cores3_ota -t upload), the
+        // hub token as password.
+        ArduinoOTA.setHostname("claude-buddy");
+        if (!cfg_.token.empty()) ArduinoOTA.setPassword(cfg_.token.c_str());
+        ArduinoOTA.onStart([] { status("atualizando o firmware…", false); });
+        ArduinoOTA.begin();
         const std::string path = "/ws?token=" + cfg_.token;
         ws.begin(cfg_.host.c_str(), cfg_.port, path.c_str());
         ws.onEvent(on_ws_event);
@@ -121,6 +129,7 @@ void hub_loop() {
       return;
     case Phase::Hub:
     case Phase::Connected:
+      ArduinoOTA.handle();
       if (WiFi.status() != WL_CONNECTED) {
         phase_ = Phase::Wifi;
         wifi_started_ = millis();
@@ -130,6 +139,40 @@ void hub_loop() {
       ws.loop();
       return;
   }
+}
+
+bool configured() {
+  const HubConfig c = load_config();
+  return !c.ssid.empty() && !c.host.empty();
+}
+
+void run_setup_portal(void (*on_screen)(const char*, const char*)) {
+  HubConfig c = load_config();
+  char port[8];
+  snprintf(port, sizeof(port), "%u", c.port);
+  WiFiManagerParameter host("host", "Endereço do hub (IP do Ubuntu)", c.host.c_str(), 63);
+  WiFiManagerParameter port_param("port", "Porta do hub", port, 6);
+  WiFiManagerParameter token("token", "Token do hub (~/.config/claude-buddy/token)", c.token.c_str(), 63);
+  WiFiManager wm;
+  wm.addParameter(&host);
+  wm.addParameter(&port_param);
+  wm.addParameter(&token);
+  wm.setTitle("Claude Buddy");
+  wm.setConfigPortalTimeout(600);
+  if (on_screen) on_screen("Conecte o celular na rede", "Buddy-setup e abra 192.168.4.1");
+  Serial.println("setup: portal open on WiFi \"Buddy-setup\"");
+  if (wm.startConfigPortal("Buddy-setup")) {
+    c.ssid = WiFi.SSID().c_str();
+    c.password = WiFi.psk().c_str();
+    c.host = host.getValue();
+    c.port = static_cast<uint16_t>(atoi(port_param.getValue()) ?: 8765);
+    c.token = token.getValue();
+    save_config(c);
+    if (on_screen) on_screen("Configurado!", "reiniciando…");
+    Serial.println("setup: saved, restarting");
+  }
+  delay(800);
+  ESP.restart();
 }
 
 bool hub_send(const std::string& json) {

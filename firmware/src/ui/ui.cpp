@@ -43,8 +43,9 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-constexpr int kPrefs = 8;
-lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro
+constexpr int kPrefs = 9;
+lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro, wifi
+void (*setup_handler_)() = nullptr;
 lv_obj_t* bar_mid_;           // pomodoro countdown
 uint32_t pomo_at_ = 0;        // millis() when the countdown was received
 int pomo_secs_ = 0;
@@ -526,6 +527,9 @@ void on_pref(lv_event_t* e) {
     case 7:
       if (send_) send_(app::pomodoro(state_.pomodoro.phase.empty()));
       return;
+    case 8:
+      if (setup_handler_) setup_handler_();
+      return;
   }
   if (send_) send_(app::settings(s));
 }
@@ -542,7 +546,7 @@ void build_settings(lv_obj_t* v) {
   lv_obj_set_pos(title, 8, 8);
   const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
                                "Temperatura lá fora", "Visual", "Indicador de bateria",
-                               "Aviso de tarefa longa", "Pomodoro (25 + 5 min)"};
+                               "Aviso de tarefa longa", "Pomodoro (25 + 5 min)", "WiFi e hub"};
   // The options scroll; Voltar / Contar stay put at the bottom.
   lv_obj_t* list = lv_obj_create(v);
   lv_obj_remove_style_all(list);
@@ -590,6 +594,7 @@ void fill_settings() {
   const bool pomo = !state_.pomodoro.phase.empty();
   set_button_text(pref_btn_[7], pomo ? "Parar" : "Iniciar");
   lv_obj_set_style_bg_color(pref_btn_[7], pomo ? kBtnOk : kBtn, 0);
+  set_button_text(pref_btn_[8], "Configurar");
   // The city is changed from the web panel (no keyboard on a 2" screen).
   lv_label_set_text_fmt(weather_label_, "Temperatura em %s", state_.settings.city.c_str());
 }
@@ -751,6 +756,21 @@ void set_link(const char* status, bool connected) {
     refresh();
     route();
   }
+}
+
+void set_setup_handler(void (*handler)()) { setup_handler_ = handler; }
+
+void show_message(const char* line1, const char* line2) {
+  lv_obj_t* layer = lv_layer_top();
+  lv_obj_clean(layer);
+  lv_obj_t* bg = box(layer, 0, 0, 320, 240, kBg);
+  lv_obj_t* a = text(bg, &buddy_font_13, kFg);
+  lv_label_set_text(a, line1);
+  lv_obj_align(a, LV_ALIGN_CENTER, 0, -12);
+  lv_obj_t* b = text(bg, &buddy_font_11, kMuted);
+  lv_label_set_text(b, line2);
+  lv_obj_align(b, LV_ALIGN_CENTER, 0, 12);
+  lv_refr_now(nullptr);  // the portal blocks the loop: draw now
 }
 
 void set_battery(int percent, bool charging) {
