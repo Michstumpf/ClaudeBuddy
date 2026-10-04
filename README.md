@@ -163,6 +163,16 @@ curl -s http://<nome-do-desktop>:8766/health -H "X-Buddy-Token: $(cat ~/.config/
 
 Cada transcrição registra no log do hub onde rodou: `on remote:cuda` (GPU) ou `on cpu` (fallback, com o motivo).
 
+## Ditado no notebook Windows
+
+O mesmo `ptt/buddy_ptt.py` roda no Windows (grava com `sounddevice`; bipes no lugar das notificações: um = ouvindo, dois = enviado) e manda o áudio ao hub pelo Tailscale. Pré-requisitos: Tailscale no notebook (mesma conta pessoal) e o hub escutando na tailnet (seção "Rede"). No notebook, na pasta do repo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\install-ptt.ps1   # -Hub http://dell:8765 -Key f9
+```
+
+Cria `.venv-ptt`, pede o token do hub, testa a conexão e agenda o atalho para o login. Log em `%LOCALAPPDATA%\ClaudeBuddy\ptt.log`.
+
 ## Comandos de voz
 
 Ditando pelo F9 (ou pelo Buddy), o hub reconhece estes pedidos e cuida deles em vez de digitar o texto na janela em foco (`hub/buddy_hub/intents.py`; nomes de sessão comparados sem acento, pontuação ou espaços, e um começo do nome basta):

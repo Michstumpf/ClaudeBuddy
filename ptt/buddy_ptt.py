@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Push-to-talk for the Ubuntu desktop (X11).
+"""Push-to-talk for the Ubuntu desktop (X11) and Windows.
 
 Two ways to use the key:
   - hold it while speaking, release to send;
@@ -11,7 +11,8 @@ The audio is recorded with pw-record, transcribed by the hub
 focused window, so it works in any terminal or app, tmux or not.
 
 Config (env):
-  BUDDY_HUB        hub URL (default http://127.0.0.1:8765)
+  BUDDY_HUB        hub URL (default http://127.0.0.1:8765; from Windows over
+                   Tailscale: http://dell:8765)
   BUDDY_TOKEN      token (default: ~/.config/claude-buddy/token)
   BUDDY_PTT_KEY    pynput key name to hold (default f9)
   BUDDY_PTT_ENTER  1 = press Enter after typing (default 1)
@@ -25,9 +26,11 @@ import logging
 import math
 import os
 import re
+import shutil
 import signal
 import statistics
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
@@ -69,6 +72,21 @@ def token() -> str:
     return (Path.home() / ".config" / "claude-buddy" / "token").read_text(encoding="utf-8").strip()
 
 
+def _beep(title: str) -> None:
+    """No notifications (Windows): short beeps instead. One = listening, two = sent."""
+    try:
+        import winsound
+    except ImportError:
+        return
+    if title.startswith("🎤"):
+        winsound.Beep(880, 90)
+    elif title.startswith("✓"):
+        winsound.Beep(988, 70)
+        winsound.Beep(1319, 90)
+    elif title.startswith("✕"):
+        winsound.Beep(330, 250)
+
+
 class Notifier:
     """One desktop notification that is updated in place (notify-send -r).
 
@@ -94,6 +112,9 @@ class Notifier:
                     self._wake.wait()
                 title, body, timeout_ms = self._latest
                 self._latest = None
+            if not shutil.which("notify-send"):
+                _beep(title)
+                continue
             cmd = ["notify-send", "-a", "Claude Buddy", "-p", "-r", self.id, "-t", str(timeout_ms), title, body]
             try:
                 out = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
@@ -103,28 +124,27 @@ class Notifier:
 
 
 class Recording:
-    """pw-record streaming raw PCM to us, so we can watch the level live."""
+    """Raw 16 kHz mono PCM, with its level watched live (for hands-free mode).
+
+    Linux: pw-record streaming to us. Elsewhere (Windows): sounddevice.
+    """
+
+    def __new__(cls):
+        if cls is _RecordingBase:  # Recording() picks the backend; subclasses are used as they are
+            cls = PipeWireRecording if shutil.which("pw-record") else SoundDeviceRecording
+        return super().__new__(cls)
 
     def __init__(self):
-        self.proc = subprocess.Popen(
-            ["pw-record", "--rate", str(RATE), "--channels", "1", "--format", "s16", "-"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-        )
         self.started = time.time()
         self.chunks: list[bytes] = []
         self.levels: list[float] = []
         self.done = threading.Event()
-        threading.Thread(target=self._read, daemon=True).start()
+        self._start()
 
-    def _read(self):
-        while not self.done.is_set():
-            data = self.proc.stdout.read(CHUNK * 2)
-            if not data:
-                break
-            self.chunks.append(data)
-            samples = array.array("h", data[: len(data) // 2 * 2])
-            self.levels.append(math.sqrt(sum(x * x for x in samples) / max(1, len(samples))))
-        self.done.set()
+    def _add(self, data: bytes) -> None:
+        self.chunks.append(data)
+        samples = array.array("h", data[: len(data) // 2 * 2])
+        self.levels.append(math.sqrt(sum(x * x for x in samples) / max(1, len(samples))))
 
     def speech_threshold(self) -> float:
         floor = statistics.median(self.levels[:3]) if len(self.levels) >= 3 else 0.0
@@ -139,11 +159,7 @@ class Recording:
         return True, (len(self.levels) - 1 - loud[-1]) * 0.1
 
     def stop(self) -> bytes:
-        self.proc.send_signal(signal.SIGINT)  # pw-record flushes its buffer on SIGINT
-        try:
-            self.proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        self._stop()
         self.done.wait(timeout=1)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wav:
@@ -152,6 +168,47 @@ class Recording:
             wav.setframerate(RATE)
             wav.writeframes(b"".join(self.chunks))
         return buf.getvalue()
+
+
+_RecordingBase = Recording
+
+
+class PipeWireRecording(Recording):
+    def _start(self):
+        self.proc = subprocess.Popen(
+            ["pw-record", "--rate", str(RATE), "--channels", "1", "--format", "s16", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        while not self.done.is_set():
+            data = self.proc.stdout.read(CHUNK * 2)
+            if not data:
+                break
+            self._add(data)
+        self.done.set()
+
+    def _stop(self):
+        self.proc.send_signal(signal.SIGINT)  # pw-record flushes its buffer on SIGINT
+        try:
+            self.proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+
+
+class SoundDeviceRecording(Recording):
+    def _start(self):
+        import sounddevice
+
+        self.stream = sounddevice.RawInputStream(samplerate=RATE, channels=1, dtype="int16", blocksize=CHUNK,
+                                                 callback=lambda data, frames, t, status: self._add(bytes(data)))
+        self.stream.start()
+
+    def _stop(self):
+        self.stream.stop()
+        self.stream.close()
+        self.done.set()
 
 
 class PushToTalk:
@@ -310,7 +367,10 @@ class PushToTalk:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    handlers = [logging.StreamHandler()] if sys.stderr else []
+    if os.environ.get("BUDDY_PTT_LOG"):  # pythonw (Windows logon task) has no console
+        handlers.append(logging.FileHandler(os.environ["BUDDY_PTT_LOG"], encoding="utf-8"))
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", handlers=handlers)
     ptt = PushToTalk()
     log.info("hold or tap %s to talk (hub %s, enter=%s)", KEY, HUB, PRESS_ENTER)
     with keyboard.Listener(on_press=ptt.on_press, on_release=ptt.on_release) as listener:
