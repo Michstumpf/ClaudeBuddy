@@ -33,6 +33,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 import wave
@@ -211,10 +212,52 @@ class SoundDeviceRecording(Recording):
         self.done.set()
 
 
+# Accents as dead keys: combining mark -> X keysym of the dead key.
+DEAD_KEYSYMS = {"\u0301": "dead_acute", "\u0300": "dead_grave", "\u0303": "dead_tilde",
+                "\u0302": "dead_circumflex", "\u0308": "dead_diaeresis"}
+
+
+class DeadKeys:
+    """Which accented letters the current X keyboard layout can type with its
+    dead keys (and which have a key of their own), so nothing gets remapped."""
+
+    def __init__(self):
+        self.dead: dict[str, keyboard.KeyCode] = {}
+        self.direct: set[str] = set()
+        try:
+            from Xlib import XK
+            from Xlib.display import Display
+
+            display = Display()
+            for mark, name in DEAD_KEYSYMS.items():
+                keysym = XK.string_to_keysym(name)
+                # Indexes 0/1: the first layout group (e.g. "br" in "br,us"), with or without Shift.
+                if any(index in (0, 1) for _, index in display.keysym_to_keycodes(keysym)):
+                    self.dead[mark] = keyboard.KeyCode.from_vk(keysym)
+            for ch in "çÇñÑ":
+                keysym = XK.string_to_keysym({"ç": "ccedilla", "Ç": "Ccedilla", "ñ": "ntilde", "Ñ": "Ntilde"}[ch])
+                if any(index in (0, 1) for _, index in display.keysym_to_keycodes(keysym)):
+                    self.direct.add(ch)
+            display.close()
+        except Exception as exc:  # not X11 (Windows): pynput's own typing works there
+            log.info("no dead-key typing (%s)", exc.__class__.__name__)
+
+    def has_key(self, ch: str) -> bool:
+        return ch in self.direct
+
+    def combo(self, ch: str) -> tuple[keyboard.KeyCode, str] | None:
+        """(dead key, base letter) for e.g. "ã", or None."""
+        decomposed = unicodedata.normalize("NFD", ch)
+        if len(decomposed) != 2 or decomposed[1] not in self.dead:
+            return None
+        return self.dead[decomposed[1]], decomposed[0]
+
+
 class PushToTalk:
     def __init__(self):
         self.notify = Notifier()
         self.typer = keyboard.Controller()
+        self.dead_keys = DeadKeys()
         self.rec: Recording | None = None
         self.hands_free = False
         self.tailing = False  # released, still recording RELEASE_TAIL
@@ -340,20 +383,28 @@ class PushToTalk:
                 self.typer.tap(keyboard.Key.enter)
 
     def type_text(self, text: str) -> None:
-        """Type like pynput's type(), but in order.
+        """Type text into the focused window, accents included.
 
-        Characters with no key on the layout (ç, ã, é with a US keymap...) are
-        typed by remapping a spare keycode, and the X server applies that
-        remap a moment later; typed back to back, "relação" came out as
-        "relçãao". Pausing around those characters keeps the order.
+        Characters the layout has no key for are typed by pynput by remapping
+        a spare keycode, which the app sees a moment later; under load
+        ("transcribing 30 s on the CPU") the letter was simply lost: "está"
+        came out as "est". So accented letters are typed the way a person
+        does on the layout's dead keys (ABNT2: ´ then a = á, ~ then a = ã),
+        with no remapping at all. The remap path is only the last resort.
         """
         for ch in text:
-            special = not ch.isascii()
-            if special:
-                time.sleep(TYPE_SETTLE)
+            if ch.isascii() or self.dead_keys.has_key(ch):
+                self.typer.type(ch)  # a key of its own (ç on ABNT2): no remap
+                continue
+            combo = self.dead_keys.combo(ch)
+            if combo:
+                dead, base = combo
+                self.typer.tap(dead)
+                self.typer.type(base)
+                continue
+            time.sleep(TYPE_SETTLE)  # no key for it on this layout: remap, slowly
             self.typer.type(ch)
-            if special:
-                time.sleep(TYPE_SETTLE)
+            time.sleep(TYPE_SETTLE)
 
     def transcribe(self, audio: bytes) -> dict:
         req = urllib.request.Request(
