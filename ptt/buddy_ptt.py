@@ -61,6 +61,7 @@ NOISE_FACTOR = 4
 # counts if no press follows within this window.
 REPEAT_GRACE = 0.08
 TYPE_SETTLE = 0.03  # seconds to let a keymap change land (see type_text)
+DEAD_KEY_SETTLE = 0.04  # seconds for the input method to commit around an accent
 # Phrases Whisper invents on silence or noise (YouTube subtitle credits).
 HALLUCINATIONS = re.compile(r"legendas? pela comunidade|amara\.org|obrigad[oa] por assistir|inscreva-se", re.I)
 
@@ -398,9 +399,14 @@ class PushToTalk:
                 continue
             combo = self.dead_keys.combo(ch)
             if combo:
+                # The input method (IBus) composes dead keys asynchronously: typed
+                # back to back, the letter before the accent was committed after it
+                # ("não" -> "ãno", "nós" -> "óns"). Let it settle around the combo.
                 dead, base = combo
+                time.sleep(DEAD_KEY_SETTLE)
                 self.typer.tap(dead)
                 self.typer.type(base)
+                time.sleep(DEAD_KEY_SETTLE)
                 continue
             time.sleep(TYPE_SETTLE)  # no key for it on this layout: remap, slowly
             self.typer.type(ch)
