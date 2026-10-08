@@ -224,6 +224,7 @@ class DeadKeys:
 
     def __init__(self):
         self.dead: dict[str, keyboard.KeyCode] = {}
+        self.shifted: set[str] = set()  # dead keys on the Shift level (ABNT2: ^ and `)
         self.direct: set[str] = set()
         try:
             from Xlib import XK
@@ -232,9 +233,13 @@ class DeadKeys:
             display = Display()
             for mark, name in DEAD_KEYSYMS.items():
                 keysym = XK.string_to_keysym(name)
-                # Indexes 0/1: the first layout group (e.g. "br" in "br,us"), with or without Shift.
-                if any(index in (0, 1) for _, index in display.keysym_to_keycodes(keysym)):
+                # Indexes 0/1: the first layout group (e.g. "br" in "br,us"), without / with Shift.
+                levels = {index for _, index in display.keysym_to_keycodes(keysym) if index in (0, 1)}
+                if levels:
                     self.dead[mark] = keyboard.KeyCode.from_vk(keysym)
+                    if levels == {1}:
+                        # pynput presses a vk's keycode without Shift: "^" came out as "~" ("porquẽ").
+                        self.shifted.add(mark)
             for ch in "çÇñÑ":
                 keysym = XK.string_to_keysym({"ç": "ccedilla", "Ç": "Ccedilla", "ñ": "ntilde", "Ñ": "Ntilde"}[ch])
                 if any(index in (0, 1) for _, index in display.keysym_to_keycodes(keysym)):
@@ -246,12 +251,13 @@ class DeadKeys:
     def has_key(self, ch: str) -> bool:
         return ch in self.direct
 
-    def combo(self, ch: str) -> tuple[keyboard.KeyCode, str] | None:
-        """(dead key, base letter) for e.g. "ã", or None."""
+    def combo(self, ch: str) -> tuple[keyboard.KeyCode, bool, str] | None:
+        """(dead key, needs Shift, base letter) for e.g. "ã", or None."""
         decomposed = unicodedata.normalize("NFD", ch)
         if len(decomposed) != 2 or decomposed[1] not in self.dead:
             return None
-        return self.dead[decomposed[1]], decomposed[0]
+        mark = decomposed[1]
+        return self.dead[mark], mark in self.shifted, decomposed[0]
 
 
 class PushToTalk:
@@ -402,9 +408,13 @@ class PushToTalk:
                 # The input method (IBus) composes dead keys asynchronously: typed
                 # back to back, the letter before the accent was committed after it
                 # ("não" -> "ãno", "nós" -> "óns"). Let it settle around the combo.
-                dead, base = combo
+                dead, shift, base = combo
                 time.sleep(DEAD_KEY_SETTLE)
-                self.typer.tap(dead)
+                if shift:
+                    with self.typer.pressed(keyboard.Key.shift):
+                        self.typer.tap(dead)
+                else:
+                    self.typer.tap(dead)
                 self.typer.type(base)
                 time.sleep(DEAD_KEY_SETTLE)
                 continue

@@ -50,7 +50,7 @@ def test_worker_health_idle_and_without_gpu_info():
 
 @pytest.mark.parametrize("gpu,reason", [
     ({"util": 95, "free_mb": 6000, "name": "RTX"}, "95% busy"),
-    ({"util": 10, "free_mb": 800, "name": "RTX"}, "800 MB"),
+    ({"util": 10, "free_mb": 200, "name": "RTX"}, "200 MB"),
 ])
 def test_worker_reports_busy_gpu(gpu, reason):
     body = worker(gpu=gpu).get("/health", headers=H).json()
@@ -165,3 +165,10 @@ def test_speaks_on_gpu_when_ready(monkeypatch):
 def test_voice_falls_back_to_piper(monkeypatch, health, speak):
     rs, local = remote_speaker(monkeypatch, health, speak)
     assert rs.synthesize("oi") == b"PIPERoi" and local.calls == 1
+
+
+
+def test_worker_still_serves_a_gpu_shared_with_a_game():
+    # 67% busy and 758 MB free (a game running) used to push dictation to the CPU.
+    body = worker(gpu={"util": 67, "free_mb": 758, "name": "RTX"}).get("/health", headers=H).json()
+    assert body["busy"] is False

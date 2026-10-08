@@ -14,8 +14,10 @@ Config (env): BUDDY_TOKEN or ~/.config/claude-buddy/token (same token as the
 hub), BUDDY_STT_MODEL (default large-v3-turbo), BUDDY_STT_DEVICE (default
 cuda), BUDDY_STT_COMPUTE (default float16), BUDDY_STT_BEAM_SIZE (default 5),
 BUDDY_STT_LANGUAGE (default pt), BUDDY_WORKER_BUSY_UTIL (GPU % that counts
-as busy, default 60), BUDDY_WORKER_MIN_FREE_MB (default 1000; with Whisper and
-XTTS loaded an 8 GB card has ~2.9 GB left, a game takes nearly all), BUDDY_WORKER_TTS
+as busy, default 90), BUDDY_WORKER_MIN_FREE_MB (default 300). The models are
+loaded at startup, so a transcription needs little extra VRAM and ~1 s of GPU:
+it barely touches a game, while the CPU fallback (Whisper small on the hub) is
+much worse, so only a GPU that is really maxed out counts as busy. BUDDY_WORKER_TTS
 (0 disables the voice), BUDDY_XTTS_SPEAKER (built-in voice, default "Gilberto
 Mathias"), BUDDY_XTTS_SPEAKER_WAV (a 6-30 s WAV to clone a voice from instead).
 """
@@ -115,7 +117,7 @@ class XttsSpeaker:
         return buf.getvalue()
 
 
-def create_app(token: str, transcriber, busy_util: int = 60, min_free_mb: int = 1000, gpu_probe=gpu_status,
+def create_app(token: str, transcriber, busy_util: int = 90, min_free_mb: int = 300, gpu_probe=gpu_status,
                speaker=None):
     from fastapi import FastAPI, Header, HTTPException, Request
     from fastapi.responses import Response
@@ -221,8 +223,8 @@ def main() -> None:
             speaker = None
     app = create_app(
         token, transcriber,
-        busy_util=int(os.environ.get("BUDDY_WORKER_BUSY_UTIL", "60")),
-        min_free_mb=int(os.environ.get("BUDDY_WORKER_MIN_FREE_MB", "1000")),
+        busy_util=int(os.environ.get("BUDDY_WORKER_BUSY_UTIL", "90")),
+        min_free_mb=int(os.environ.get("BUDDY_WORKER_MIN_FREE_MB", "300")),
         speaker=speaker,
     )
     log.info("worker on http://%s:%s (model %s on %s)", args.host, args.port, transcriber.model_name, transcriber.device)

@@ -127,7 +127,7 @@ Prioridade, da menor para a maior: padrões do código < `config.toml` < variáv
 
 ## Transcrição na GPU do desktop (opcional)
 
-O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU ocupada (≥ 60% de uso ou menos de 1 GB de VRAM livre, por exemplo num jogo; com os dois modelos carregados sobram ~2,9 GB numa placa de 8 GB) ou falhar. O modelo local só carrega quando o fallback acontece.
+O hub manda o áudio primeiro para um worker na GPU do desktop Windows (`buddy_hub.worker`, faster-whisper `large-v3-turbo` em CUDA) e transcreve na própria CPU se o desktop estiver desligado, demorar mais de 1 s para responder ao `/health`, estiver com a GPU no limite (≥ 90% de uso ou menos de 300 MB de VRAM livre; os modelos ficam carregados, e uma transcrição usa ~1 s de GPU, então um jogo aberto não basta para desviar — a CPU do hub transcreve bem pior) ou falhar. O modelo local só carrega quando o fallback acontece.
 
 ```
 F9 / Buddy ──áudio──▶ hub (Ubuntu) ──Tailscale──▶ worker (desktop, GPU) ──texto──▶ hub ──▶ digitado no Ubuntu
