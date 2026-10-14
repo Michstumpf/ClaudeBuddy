@@ -19,7 +19,8 @@
 #   de um desenvolvedor gaúcho. Uma por linha, sem numeração, no máximo 120
 #   caracteres cada, texto simples sem emojis nem aspas. Piadas de verdade,
 #   com desfecho: trocadilhos, pergunta e resposta, "qual é o cúmulo de...",
-#   mini diálogos (nada de definição de dicionário). Temas variados:
+#   mini diálogos, "o que é um pontinho X em Y?" (nada de definição de
+#   dicionário). Temas variados:
 #   programação, Git, deploy, reuniões, café, chimarrão, frio do Sul,
 #   churrasco, home office, IA. Nada pesado
 #   (morte, doença, política, insultos). Evite "por que X foi ao médico".
@@ -37,3 +38,9 @@ Meu código não tem comentários: ele fala por si. Só não fala comigo.
 Testei em produção. Os usuários são os melhores testadores.
 {O dev|A dev|O estagiário} disse que era só uma linha. Foram três dias.
 Qual é o cúmulo da otimização? Fazer {o café|o chimarrão} em O(1).
+O que é um pontinho amarelo no céu? Um yellowcóptero.
+O que é um pontinho verde no canto da sala? Uma ervilha de castigo.
+O que é um pontinho vermelho no castelo? A pimenta do reino.
+O que é um pontinho preto no avião? Uma aeromosca.
+O que é um pontinho verde no GitHub? Um commit tentando provar que você trabalhou.
+O que é um pontinho vermelho no CI? Um teste que passava na minha máquina.

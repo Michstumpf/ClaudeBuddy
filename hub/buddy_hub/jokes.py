@@ -50,6 +50,10 @@ FORMATS = [
     "uma frase curta de efeito",
     "\"Qual é o cúmulo de...?\" com a resposta",
     "um mini diálogo de duas falas",
+    "\"O que é um pontinho <cor> <em algum lugar>?\" e a resposta, que explica o pontinho com uma imagem absurda "
+    "ou um trocadilho que encaixa de verdade, como nos clássicos: \"O que é um pontinho verde no canto da sala? "
+    "Uma ervilha de castigo.\", \"O que é um pontinho vermelho no castelo? A pimenta do reino.\", \"O que é um "
+    "pontinho preto no avião? Uma aeromosca.\". Invente um novo, não use esses",
 ]
 
 SYSTEM = """You are Buddy, a small pixel-art mascot on a developer's desk in Canoas, Brazil, who watches their Claude Code sessions.
