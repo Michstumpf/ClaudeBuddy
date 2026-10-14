@@ -1,0 +1,39 @@
+# Piadas do Claude Buddy
+#
+# Copie para ~/.config/claude-buddy/jokes.txt e edite à vontade:
+#   cp hub/jokes.example.txt ~/.config/claude-buddy/jokes.txt
+#
+# Regras:
+# - uma piada por linha; linhas vazias e linhas começando com # são ignoradas;
+# - no máximo 120 caracteres (o tamanho do balão); as mais longas são puladas;
+# - {a|b|c} sorteia uma das opções a cada vez que a piada é contada;
+# - texto simples: sem emoji, aspas ou markdown (a piada também é falada).
+#
+# Com a chave do Haiku, ~30% das piadas vêm daqui e o resto o Haiku escreve.
+# Sem a chave (ou se o Haiku falhar), só daqui. O hub relê o arquivo a cada
+# piada, então não precisa reiniciar nada depois de editar.
+#
+# Para pedir piadas a uma IA (Claude, ChatGPT, Gemini), cole isto:
+#
+#   Escreva 40 piadas curtas em português do Brasil para um mascote de mesa
+#   de um desenvolvedor gaúcho. Uma por linha, sem numeração, no máximo 120
+#   caracteres cada, texto simples sem emojis nem aspas. Piadas de verdade,
+#   com desfecho: trocadilhos, pergunta e resposta, "qual é o cúmulo de...",
+#   definições engraçadas. Temas variados: programação, Git, deploy, reuniões,
+#   café, chimarrão, frio do Sul, churrasco, home office, IA. Nada pesado
+#   (morte, doença, política, insultos). Evite "por que X foi ao médico".
+#   Quando fizer sentido, use {opção 1|opção 2} para trechos que podem variar,
+#   por exemplo: {O dev|A dev|O estagiário} fez deploy na sexta.
+
+Por que o programador foi ao médico? Porque estava com muitos bugs.
+Funciona na minha máquina. Então vamos mandar a sua máquina para produção.
+Existem 10 tipos de pessoas: as que entendem binário e as que não entendem.
+Eu não tenho bugs, tenho funcionalidades não documentadas.
+Commit {na sexta à tarde|na sexta às 17h|antes do feriado} é esporte radical.
+Café entra, código sai. Às vezes sai só bug.
+O chimarrão esfria mais rápido que o build termina.
+Meu código não tem comentários: ele fala por si. Só não fala comigo.
+Testei em produção. Os usuários são os melhores testadores.
+Recursão: veja recursão.
+{O dev|A dev|O estagiário} disse que era só uma linha. Foram três dias.
+Qual é o cúmulo da otimização? Fazer {o café|o chimarrão} em O(1).

@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hub"))
 
-from buddy_hub import daystats, prefs, summarizer  # noqa: E402
+from buddy_hub import daystats, jokes, prefs, summarizer  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -16,3 +16,5 @@ def no_real_anthropic_key(monkeypatch, tmp_path):
     monkeypatch.setattr(summarizer, "USAGE_FILE", tmp_path / "usage.jsonl")
     monkeypatch.setattr(prefs, "PREFS_FILE", tmp_path / "prefs.json")
     monkeypatch.setattr(daystats, "STATS_FILE", tmp_path / "today.json")
+    monkeypatch.setattr(jokes, "JOKES_FILE", tmp_path / "jokes.json")
+    monkeypatch.setattr(jokes, "USER_JOKES_FILE", tmp_path / "jokes.txt")

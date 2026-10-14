@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 
 import pytest
 from fastapi.testclient import TestClient
@@ -8,7 +9,7 @@ from buddy_hub import app as app_module
 from buddy_hub import prefs as prefs_module
 from buddy_hub.app import create_app
 from buddy_hub.config import Settings
-from buddy_hub.jokes import FALLBACK, JokeTeller, moment
+from buddy_hub.jokes import FALLBACK, TOPICS, JokeTeller, load_user_jokes, moment
 from buddy_hub.prefs import Prefs
 from buddy_hub.weather import describe, parse
 
@@ -53,7 +54,7 @@ def test_weather_night_icon():
 def test_moment_has_counts_but_no_session_content():
     snap = {"sessions": [{"name": "HIPAA Compliance", "status": "working", "last_message": "segredo"},
                          {"name": "DataHub", "status": "idle"}]}
-    m = moment(snap, {"temp": 17, "text": "nublado"})
+    m = " | ".join(moment(snap, {"temp": 17, "text": "nublado"}))
     assert "2 sessões abertas, 1 trabalhando" in m and "17°C, nublado" in m
     assert "HIPAA" not in m and "DataHub" not in m and "segredo" not in m
 
@@ -62,6 +63,41 @@ def test_fallback_jokes_without_key_do_not_repeat_soon():
     teller = JokeTeller(api_key="")
     told = [asyncio.run(teller.tell({"sessions": []}, None)) for _ in range(5)]
     assert len(set(told)) == 5 and all(j in FALLBACK for j in told)
+
+
+def test_told_jokes_survive_a_restart(tmp_path):
+    path = tmp_path / "jokes.json"
+    first = asyncio.run(JokeTeller(api_key="", path=path).tell({"sessions": []}, None))
+    assert JokeTeller(api_key="", path=path).recent == [first]
+
+
+def test_user_jokes_file_with_variations(tmp_path):
+    user = tmp_path / "mine.txt"
+    user.write_text("# comentário\n\n{O dev|A dev} esqueceu o ponto e vírgula.\n" + "x" * 200 + "\n", encoding="utf-8")
+    assert load_user_jokes(user) == ["{O dev|A dev} esqueceu o ponto e vírgula."]  # the too-long one is skipped
+    teller = JokeTeller(api_key="", user_path=user)
+    told = {asyncio.run(teller.tell({"sessions": []}, None)) for _ in range(20)}
+    assert told == {"O dev esqueceu o ponto e vírgula.", "A dev esqueceu o ponto e vírgula."}
+
+
+def test_builtin_jokes_without_a_user_file(tmp_path):
+    teller = JokeTeller(api_key="", user_path=tmp_path / "missing.txt")
+    assert asyncio.run(teller.tell({"sessions": []}, None)) in FALLBACK
+
+
+def test_topics_rotate_and_the_moment_is_one_detail():
+    teller = JokeTeller(api_key="", rng=random.Random(7))
+    snap = {"sessions": [{"name": "x", "status": "working"}]}
+    picks = [teller.pick(snap, {"temp": 17, "text": "nublado"}) for _ in range(200)]
+    topics = [t for t, _ in picks if not t.startswith("o momento")]
+    moments = [t for t, _ in picks if t.startswith("o momento")]
+    assert 15 <= len(moments) <= 70  # ~20%
+    # one detail, never all of them
+    assert all(sum(k in t for k in ("agora é", "sessões", "°C")) == 1 for t in moments)
+    assert len(set(topics)) > len(TOPICS) // 2
+    for i in range(len(topics) - 1):  # no topic twice in a row
+        assert topics[i] != topics[i + 1]
+    assert len({f for _, f in picks}) > 3
 
 
 # ---- through the Buddy -------------------------------------------------------------
