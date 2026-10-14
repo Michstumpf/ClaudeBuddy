@@ -188,6 +188,21 @@ class XttsSpeaker:
         return samples
 
 
+def restart_process() -> None:
+    """Start a fresh worker and end this one.
+
+    A CUDA error such as "unknown error" (seen after the GPU driver hiccups)
+    breaks the CUDA context for good: every later synthesis fails at once,
+    and only a new process gets a working GPU again. The new one loads the
+    models (~1 min) before it takes the port, so this one leaves first.
+    """
+    log.error("CUDA is broken in this process: starting a fresh worker")
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([sys.executable, "-m", "buddy_hub.worker", *sys.argv[1:]], cwd=os.getcwd(),
+                     creationflags=flags, close_fds=True)
+    threading.Timer(1.0, os._exit, args=(3,)).start()  # time for the 503 to go out
+
+
 def create_app(token: str, transcriber, busy_util: int = 90, min_free_mb: int = 300, gpu_probe=gpu_status,
                speaker=None, on_cuda_failure=None):
     from fastapi import FastAPI, Header, HTTPException, Request

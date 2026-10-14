@@ -200,3 +200,9 @@ def test_kept_last_word():
     assert kept_last_word("uma nuvem que nao conseguiu se formar DIREITO", sentence)
     assert not kept_last_word("Uma nuvem que não conseguiu se formar direi", sentence)
     assert kept_last_word("", "!!!")  # nothing to check
+
+
+def test_worker_main_has_its_restart_hook():
+    # main() wires this in only at startup, which no other test runs.
+    from buddy_hub import worker as worker_module
+    assert callable(worker_module.restart_process)
