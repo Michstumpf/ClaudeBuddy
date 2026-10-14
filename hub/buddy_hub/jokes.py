@@ -50,7 +50,6 @@ FORMATS = [
     "uma frase curta de efeito",
     "\"Qual é o cúmulo de...?\" com a resposta",
     "um mini diálogo de duas falas",
-    "uma definição engraçada, como num dicionário",
 ]
 
 SYSTEM = """You are Buddy, a small pixel-art mascot on a developer's desk in Canoas, Brazil, who watches their Claude Code sessions.
@@ -72,7 +71,6 @@ FALLBACK = [
     "O chimarrão esfria mais rápido que o build termina.",
     "Meu código não tem comentários: ele fala por si. Só não fala comigo.",
     "Testei em produção. Os usuários são os melhores testadores.",
-    "Recursão: veja recursão.",
 ]
 
 
