@@ -20,7 +20,10 @@ if ($LASTEXITCODE -ne 0) { throw "git pull failed (local changes?). Fix it in $R
 
 Write-Host "==> Restarting '$TaskName'" -ForegroundColor Cyan
 Stop-ScheduledTask -TaskName $TaskName
-# Stop-ScheduledTask returns before pythonw has exited and freed the port.
+# A worker that restarted itself after a GPU error runs outside the task.
+Get-CimInstance Win32_Process -Filter "CommandLine LIKE '%buddy_hub.worker%'" |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# Give the old process time to exit and free the port.
 Start-Sleep -Seconds 3
 Start-ScheduledTask -TaskName $TaskName
 

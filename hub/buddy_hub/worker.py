@@ -31,6 +31,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import wave
 from pathlib import Path
@@ -117,13 +118,29 @@ class XttsSpeaker:
         return buf.getvalue()
 
 
+def restart_process() -> None:
+    """Start a fresh worker and end this one.
+
+    A CUDA error such as "unknown error" (seen after the GPU driver hiccups)
+    breaks the CUDA context for good: every later synthesis fails at once,
+    and only a new process gets a working GPU again. The new one loads the
+    models (~1 min) before it takes the port, so this one leaves first.
+    """
+    log.error("CUDA is broken in this process: starting a fresh worker")
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    subprocess.Popen([sys.executable, "-m", "buddy_hub.worker", *sys.argv[1:]], cwd=os.getcwd(),
+                     creationflags=flags, close_fds=True)
+    threading.Timer(1.0, os._exit, args=(3,)).start()  # time for the 503 to go out
+
+
 def create_app(token: str, transcriber, busy_util: int = 90, min_free_mb: int = 300, gpu_probe=gpu_status,
-               speaker=None):
+               speaker=None, on_cuda_failure=None):
     from fastapi import FastAPI, Header, HTTPException, Request
     from fastapi.responses import Response
 
     app = FastAPI(title="Claude Buddy STT worker")
     working = asyncio.Lock()
+    voice = {"ok": speaker is not None}
 
     def check(value: str | None) -> None:
         if not value or not hmac.compare_digest(value, token):
@@ -141,7 +158,7 @@ def create_app(token: str, transcriber, busy_util: int = 90, min_free_mb: int = 
             elif gpu["free_mb"] < min_free_mb:
                 reason = f"only {gpu['free_mb']} MB of VRAM free"
         return {"ok": True, "busy": reason is not None, "reason": reason, "gpu": gpu,
-                "model": transcriber.model_name, "tts": speaker is not None}
+                "model": transcriber.model_name, "tts": voice["ok"]}
 
     @app.post("/transcribe")
     async def transcribe(request: Request, x_buddy_token: str | None = Header(None)):
@@ -157,14 +174,23 @@ def create_app(token: str, transcriber, busy_util: int = 90, min_free_mb: int = 
     @app.post("/speak")
     async def speak(request: Request, x_buddy_token: str | None = Header(None)):
         check(x_buddy_token)
-        if speaker is None:
+        if not voice["ok"]:
             raise HTTPException(status_code=503, detail="no voice on this worker")
         text = ((await request.json()).get("text") or "").strip()
         if not text:
             raise HTTPException(status_code=400, detail="empty text")
         started = time.time()
         async with working:
-            wav = await asyncio.to_thread(speaker.synthesize, text)
+            try:
+                wav = await asyncio.to_thread(speaker.synthesize, text)
+            except RuntimeError as exc:
+                if "CUDA error" not in str(exc):
+                    raise
+                log.error("voice failed: %s", exc)
+                voice["ok"] = False  # the hub speaks with Piper meanwhile
+                if on_cuda_failure:
+                    on_cuda_failure()
+                raise HTTPException(status_code=503, detail="gpu failed; worker restarting") from None
         log.info("spoke %d chars in %.2fs", len(text), time.time() - started)
         return Response(wav, media_type="audio/wav")
 
@@ -226,6 +252,7 @@ def main() -> None:
         busy_util=int(os.environ.get("BUDDY_WORKER_BUSY_UTIL", "90")),
         min_free_mb=int(os.environ.get("BUDDY_WORKER_MIN_FREE_MB", "300")),
         speaker=speaker,
+        on_cuda_failure=restart_process,
     )
     log.info("worker on http://%s:%s (model %s on %s)", args.host, args.port, transcriber.model_name, transcriber.device)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", log_config=None)

@@ -126,6 +126,19 @@ def test_worker_speak_endpoint():
     assert c.post("/speak", json={"text": "x"}).status_code == 401
 
 
+def test_worker_cuda_failure_drops_the_voice_and_restarts():
+    class BrokenVoice(FakeVoice):
+        def synthesize(self, text):
+            raise RuntimeError("CUDA error: unknown error")
+
+    restarts = []
+    c = TestClient(create_app(TOKEN, FakeTranscriber(), gpu_probe=lambda: None, speaker=BrokenVoice(),
+                              on_cuda_failure=lambda: restarts.append(1)))
+    assert c.post("/speak", json={"text": "olá"}, headers=H).status_code == 503
+    assert restarts == [1]
+    assert c.get("/health", headers=H).json()["tts"] is False  # the hub uses Piper until the new worker is up
+
+
 def test_worker_without_voice():
     c = worker()
     assert c.get("/health", headers=H).json()["tts"] is False
