@@ -15,7 +15,11 @@ $TokenFile = Join-Path $env:USERPROFILE ".config\claude-buddy\token"
 $Log = Join-Path $env:LOCALAPPDATA "ClaudeBuddy\worker.log"
 
 Write-Host "==> git pull" -ForegroundColor Cyan
+# Windows PowerShell 5.1 turns any stderr line of a native program (git's
+# "From https://..." progress) into a fatal error under "Stop".
+$ErrorActionPreference = "Continue"
 & git -C $Repo pull --ff-only 2>&1 | ForEach-Object { "$_" }
+$ErrorActionPreference = "Stop"
 if ($LASTEXITCODE -ne 0) { throw "git pull failed (local changes?). Fix it in $Repo and run this again." }
 
 Write-Host "==> Restarting '$TaskName'" -ForegroundColor Cyan
