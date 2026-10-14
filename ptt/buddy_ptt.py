@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Push-to-talk for the Ubuntu desktop (X11) and Windows.
+"""Push-to-talk for the Ubuntu desktop (Wayland or X11) and Windows.
 
 Two ways to use the key:
   - hold it while speaking, release to send;
@@ -10,11 +10,16 @@ The audio is recorded with pw-record, transcribed by the hub
 (POST /api/transcribe, faster-whisper, never leaves home) and typed into the
 focused window, so it works in any terminal or app, tmux or not.
 
+Linux reads the key from /dev/input (evdev) and types through a virtual
+keyboard (/dev/uinput), which works under Wayland, where no app may watch or
+fake keys through the display server. Needs the user in the "input" group and
+/dev/uinput writable by it (see the README). Windows uses pynput.
+
 Config (env):
   BUDDY_HUB        hub URL (default http://127.0.0.1:8765; from Windows over
                    Tailscale: http://dell:8765)
   BUDDY_TOKEN      token (default: ~/.config/claude-buddy/token)
-  BUDDY_PTT_KEY    pynput key name to hold (default f9)
+  BUDDY_PTT_KEY    key to hold (default f9)
   BUDDY_PTT_ENTER  1 = press Enter after typing (default 1)
   BUDDY_PTT_SILENCE  seconds of silence that end a hands-free take (default 1.5)
 """
@@ -39,10 +44,8 @@ import urllib.request
 import wave
 from pathlib import Path
 
-from pynput import keyboard
-
 HUB = os.environ.get("BUDDY_HUB", "http://127.0.0.1:8765").rstrip("/")
-KEY = getattr(keyboard.Key, os.environ.get("BUDDY_PTT_KEY", "f9").lower())
+KEY_NAME = os.environ.get("BUDDY_PTT_KEY", "f9").lower()
 PRESS_ENTER = os.environ.get("BUDDY_PTT_ENTER", "1") == "1"
 TAP_SECONDS = 0.4  # a shorter press is a tap: switch to hands-free mode
 # Keep recording a little after the key is released: people let go while
@@ -57,10 +60,7 @@ MAX_SECONDS = 120.0
 # ~250. The noise floor raises the threshold in noisy rooms.
 SPEECH_RMS_MIN = 60
 NOISE_FACTOR = 4
-# X11 auto-repeat turns a held key into release+press pairs; a release only
-# counts if no press follows within this window.
-REPEAT_GRACE = 0.08
-TYPE_SETTLE = 0.03  # seconds to let a keymap change land (see type_text)
+KEY_DELAY = 0.004  # between virtual key events, so the compositor keeps them in order
 DEAD_KEY_SETTLE = 0.04  # seconds for the input method to commit around an accent
 # Phrases Whisper invents on silence or noise (YouTube subtitle credits).
 HALLUCINATIONS = re.compile(r"legendas? pela comunidade|amara\.org|obrigad[oa] por assistir|inscreva-se", re.I)
@@ -213,77 +213,189 @@ class SoundDeviceRecording(Recording):
         self.done.set()
 
 
-# Accents as dead keys: combining mark -> X keysym of the dead key.
-DEAD_KEYSYMS = {"\u0301": "dead_acute", "\u0300": "dead_grave", "\u0303": "dead_tilde",
-                "\u0302": "dead_circumflex", "\u0308": "dead_diaeresis"}
+# ---- typing on Linux: a virtual keyboard with the ABNT2 layout ----------------
+#
+# The compositor applies the desktop's layout (br/ABNT2) to the virtual keyboard
+# too, so each character is sent as the physical key that makes it there.
+# Accented letters are typed as a person does, with the dead keys
+# (´ then a = á, ~ then a = ã).
+
+def _abnt2_keys() -> dict[str, tuple[str, bool]]:
+    """Character -> (evdev key name, Shift) on ABNT2."""
+    keys = {}
+    for c in "abcdefghijklmnopqrstuvwxyz":
+        keys[c] = (f"KEY_{c.upper()}", False)
+        keys[c.upper()] = (f"KEY_{c.upper()}", True)
+    for digit, shifted in zip("1234567890", "!@#$%¨&*()"):
+        keys[digit] = (f"KEY_{digit}", False)
+        if shifted != "¨":  # a dead key on ABNT2, see DEAD_KEYS
+            keys[shifted] = (f"KEY_{digit}", True)
+    for key, plain, shifted in (
+        ("KEY_MINUS", "-", "_"), ("KEY_EQUAL", "=", "+"), ("KEY_RIGHTBRACE", "[", "{"),
+        ("KEY_BACKSLASH", "]", "}"), ("KEY_SEMICOLON", "ç", "Ç"), ("KEY_GRAVE", "'", '"'),
+        ("KEY_COMMA", ",", "<"), ("KEY_DOT", ".", ">"), ("KEY_SLASH", ";", ":"),
+        ("KEY_RO", "/", "?"), ("KEY_102ND", "\\", "|"),
+    ):
+        keys[plain], keys[shifted] = (key, False), (key, True)
+    keys[" "], keys["\n"], keys["\t"] = ("KEY_SPACE", False), ("KEY_ENTER", False), ("KEY_TAB", False)
+    return keys
 
 
-class DeadKeys:
-    """Which accented letters the current X keyboard layout can type with its
-    dead keys (and which have a key of their own), so nothing gets remapped."""
+ABNT2_KEYS = _abnt2_keys()
+# Combining mark -> its dead key on ABNT2.
+DEAD_KEYS = {"́": ("KEY_LEFTBRACE", False), "̀": ("KEY_LEFTBRACE", True),
+             "̃": ("KEY_APOSTROPHE", False), "̂": ("KEY_APOSTROPHE", True),
+             "̈": ("KEY_6", True)}
+# The accents on their own: the dead key, then space.
+SPACING_ACCENTS = {"´": "́", "`": "̀", "~": "̃", "^": "̂", "¨": "̈"}
+# Typography Whisper sometimes writes, as what the keyboard has.
+PLAIN = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'", "–": "-", "—": "-", "…": "...", " ": " "})
+
+
+def abnt2_strokes(ch: str) -> list[tuple[str, bool]] | None:
+    """The (key, Shift) presses that type ch on ABNT2; several for a dead-key
+    combination. None if the layout cannot type it."""
+    if ch in ABNT2_KEYS:
+        return [ABNT2_KEYS[ch]]
+    if ch in SPACING_ACCENTS:
+        return [DEAD_KEYS[SPACING_ACCENTS[ch]], ABNT2_KEYS[" "]]
+    decomposed = unicodedata.normalize("NFD", ch)
+    if len(decomposed) == 2 and decomposed[1] in DEAD_KEYS and decomposed[0] in ABNT2_KEYS:
+        return [DEAD_KEYS[decomposed[1]], ABNT2_KEYS[decomposed[0]]]
+    return None
+
+
+class UInputTyper:
+    NAME = "Claude Buddy keyboard"  # also how the key listener skips it
 
     def __init__(self):
-        self.dead: dict[str, keyboard.KeyCode] = {}
-        self.shifted: set[str] = set()  # dead keys on the Shift level (ABNT2: ^ and `)
-        self.direct: set[str] = set()
-        try:
-            from Xlib import XK
-            from Xlib.display import Display
+        from evdev import UInput, ecodes
 
-            display = Display()
-            for mark, name in DEAD_KEYSYMS.items():
-                keysym = XK.string_to_keysym(name)
-                # Indexes 0/1: the first layout group (e.g. "br" in "br,us"), without / with Shift.
-                levels = {index for _, index in display.keysym_to_keycodes(keysym) if index in (0, 1)}
-                if levels:
-                    self.dead[mark] = keyboard.KeyCode.from_vk(keysym)
-                    if levels == {1}:
-                        # pynput presses a vk's keycode without Shift: "^" came out as "~" ("porquẽ").
-                        self.shifted.add(mark)
-            for ch in "çÇñÑ":
-                keysym = XK.string_to_keysym({"ç": "ccedilla", "Ç": "Ccedilla", "ñ": "ntilde", "Ñ": "Ntilde"}[ch])
-                if any(index in (0, 1) for _, index in display.keysym_to_keycodes(keysym)):
-                    self.direct.add(ch)
-            display.close()
-        except Exception as exc:  # not X11 (Windows): pynput's own typing works there
-            log.info("no dead-key typing (%s)", exc.__class__.__name__)
+        self.ecodes = ecodes
+        names = {key for key, _ in ABNT2_KEYS.values()} | {key for key, _ in DEAD_KEYS.values()} | {"KEY_LEFTSHIFT"}
+        self.ui = UInput({ecodes.EV_KEY: sorted(ecodes.ecodes[n] for n in names)}, name=self.NAME)
+        time.sleep(0.5)  # the compositor picks up a new keyboard asynchronously
 
-    def has_key(self, ch: str) -> bool:
-        return ch in self.direct
+    def _press(self, key: str, shift: bool) -> None:
+        ec = self.ecodes
+        events = [(ec.KEY_LEFTSHIFT, 1)] if shift else []
+        events += [(ec.ecodes[key], 1), (ec.ecodes[key], 0)]
+        events += [(ec.KEY_LEFTSHIFT, 0)] if shift else []
+        for code, value in events:
+            self.ui.write(ec.EV_KEY, code, value)
+            self.ui.syn()
+            time.sleep(KEY_DELAY)
 
-    def combo(self, ch: str) -> tuple[keyboard.KeyCode, bool, str] | None:
-        """(dead key, needs Shift, base letter) for e.g. "ã", or None."""
-        decomposed = unicodedata.normalize("NFD", ch)
-        if len(decomposed) != 2 or decomposed[1] not in self.dead:
-            return None
-        mark = decomposed[1]
-        return self.dead[mark], mark in self.shifted, decomposed[0]
+    def type(self, text: str) -> None:
+        skipped = 0
+        for ch in text.translate(PLAIN):
+            strokes = abnt2_strokes(ch)
+            if strokes is None:
+                skipped += 1
+                continue
+            if len(strokes) > 1:
+                # The input method (IBus) composes dead keys asynchronously: typed
+                # back to back, the letter before the accent was committed after it
+                # ("não" -> "ãno", "nós" -> "óns"). Let it settle around the combo.
+                time.sleep(DEAD_KEY_SETTLE)
+            for key, shift in strokes:
+                self._press(key, shift)
+            if len(strokes) > 1:
+                time.sleep(DEAD_KEY_SETTLE)
+        if skipped:
+            log.info("skipped %d characters the layout cannot type", skipped)
+
+    def enter(self) -> None:
+        self._press("KEY_ENTER", False)
+
+
+class PynputTyper:
+    """Windows: pynput types any character itself."""
+
+    def __init__(self):
+        from pynput import keyboard
+
+        self.keyboard = keyboard
+        self.controller = keyboard.Controller()
+
+    def type(self, text: str) -> None:
+        self.controller.type(text.translate(PLAIN))
+
+    def enter(self) -> None:
+        self.controller.tap(self.keyboard.Key.enter)
+
+
+# ---- the push-to-talk key ----------------------------------------------------
+
+def listen_evdev(key_name: str, on_down, on_up) -> None:
+    """Watch every keyboard that has the key (plugged in later too), forever.
+
+    Auto-repeat arrives as value 2 and is ignored, so holding the key is one
+    down and one up. The key still reaches the focused app, as before.
+    """
+    import selectors
+
+    from evdev import InputDevice, ecodes, list_devices
+
+    code = ecodes.ecodes[f"KEY_{key_name.upper()}"]
+    sel = selectors.DefaultSelector()
+    watched: dict[str, InputDevice] = {}
+    warned = False
+    while True:
+        for path in set(list_devices()) - watched.keys():
+            try:
+                dev = InputDevice(path)
+            except OSError:
+                continue
+            if dev.name == UInputTyper.NAME or code not in dev.capabilities().get(ecodes.EV_KEY, []):
+                dev.close()
+                continue
+            watched[path] = dev
+            sel.register(dev, selectors.EVENT_READ)
+            log.info("listening on %s (%s)", dev.name, path)
+        if not watched and not warned:
+            log.warning("no readable keyboard: is this user in the 'input' group? (see the README)")
+            warned = True
+        for selkey, _ in sel.select(timeout=5):  # rescan for new keyboards every 5 s
+            dev = selkey.fileobj
+            try:
+                for event in dev.read():
+                    if event.type == ecodes.EV_KEY and event.code == code:
+                        if event.value == 1:
+                            on_down()
+                        elif event.value == 0:
+                            on_up()
+            except OSError:  # unplugged
+                sel.unregister(dev)
+                watched.pop(dev.path, None)
+                dev.close()
+
+
+def listen_pynput(key_name: str, on_down, on_up) -> None:
+    from pynput import keyboard
+
+    key = getattr(keyboard.Key, key_name)
+    with keyboard.Listener(on_press=lambda k: k == key and on_down(),
+                           on_release=lambda k: k == key and on_up()) as listener:
+        listener.join()
 
 
 class PushToTalk:
     def __init__(self):
         self.notify = Notifier()
-        self.typer = keyboard.Controller()
-        self.dead_keys = DeadKeys()
+        self.typer = UInputTyper() if sys.platform == "linux" else PynputTyper()
         self.rec: Recording | None = None
         self.hands_free = False
         self.tailing = False  # released, still recording RELEASE_TAIL
         self.ignore_release = False
-        self.pending_release: threading.Timer | None = None
         self.state_lock = threading.Lock()
         self.busy = threading.Lock()  # one transcription at a time
 
     # ---- key events -------------------------------------------------------
 
-    def on_press(self, key):
-        if key != KEY:
-            return
+    def key_down(self):
         with self.state_lock:
             if self.tailing:
-                return
-            if self.pending_release:  # X11 auto-repeat: the key is still held
-                self.pending_release.cancel()
-                self.pending_release = None
                 return
             if self.rec and self.hands_free:  # second tap ends a hands-free take
                 self.ignore_release = True
@@ -292,22 +404,12 @@ class PushToTalk:
             if self.rec is None and not self.busy.locked():
                 self._start()
 
-    def on_release(self, key):
-        if key != KEY:
-            return
+    def key_up(self):
         with self.state_lock:
             if self.ignore_release:
                 self.ignore_release = False
                 return
             if self.rec is None or self.hands_free or self.tailing:
-                return
-            self.pending_release = threading.Timer(REPEAT_GRACE, self._released)
-            self.pending_release.start()
-
-    def _released(self):
-        with self.state_lock:
-            self.pending_release = None
-            if self.rec is None:
                 return
             if time.time() - self.rec.started < TAP_SECONDS:
                 self.hands_free = True
@@ -384,43 +486,10 @@ class PushToTalk:
             log.info("typing %d chars", len(text))
             self.notify.show("✓ Enviado" if PRESS_ENTER else "✓ Digitado", text, 3000)
             time.sleep(0.05)
-            self.type_text(text)
+            self.typer.type(text)
             if PRESS_ENTER:
                 time.sleep(0.05)
-                self.typer.tap(keyboard.Key.enter)
-
-    def type_text(self, text: str) -> None:
-        """Type text into the focused window, accents included.
-
-        Characters the layout has no key for are typed by pynput by remapping
-        a spare keycode, which the app sees a moment later; under load
-        ("transcribing 30 s on the CPU") the letter was simply lost: "está"
-        came out as "est". So accented letters are typed the way a person
-        does on the layout's dead keys (ABNT2: ´ then a = á, ~ then a = ã),
-        with no remapping at all. The remap path is only the last resort.
-        """
-        for ch in text:
-            if ch.isascii() or self.dead_keys.has_key(ch):
-                self.typer.type(ch)  # a key of its own (ç on ABNT2): no remap
-                continue
-            combo = self.dead_keys.combo(ch)
-            if combo:
-                # The input method (IBus) composes dead keys asynchronously: typed
-                # back to back, the letter before the accent was committed after it
-                # ("não" -> "ãno", "nós" -> "óns"). Let it settle around the combo.
-                dead, shift, base = combo
-                time.sleep(DEAD_KEY_SETTLE)
-                if shift:
-                    with self.typer.pressed(keyboard.Key.shift):
-                        self.typer.tap(dead)
-                else:
-                    self.typer.tap(dead)
-                self.typer.type(base)
-                time.sleep(DEAD_KEY_SETTLE)
-                continue
-            time.sleep(TYPE_SETTLE)  # no key for it on this layout: remap, slowly
-            self.typer.type(ch)
-            time.sleep(TYPE_SETTLE)
+                self.typer.enter()
 
     def transcribe(self, audio: bytes) -> dict:
         req = urllib.request.Request(
@@ -439,9 +508,9 @@ def main() -> None:
         handlers.append(logging.FileHandler(os.environ["BUDDY_PTT_LOG"], encoding="utf-8"))
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", handlers=handlers)
     ptt = PushToTalk()
-    log.info("hold or tap %s to talk (hub %s, enter=%s)", KEY, HUB, PRESS_ENTER)
-    with keyboard.Listener(on_press=ptt.on_press, on_release=ptt.on_release) as listener:
-        listener.join()
+    log.info("hold or tap %s to talk (hub %s, enter=%s)", KEY_NAME, HUB, PRESS_ENTER)
+    listen = listen_evdev if sys.platform == "linux" else listen_pynput
+    listen(KEY_NAME, ptt.key_down, ptt.key_up)
 
 
 if __name__ == "__main__":

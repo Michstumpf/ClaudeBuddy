@@ -53,7 +53,7 @@ O arquivo só vence quando é mais novo que o último hook, então nunca desfaz 
 
 ## Ditado por voz no Ubuntu (segurar F9)
 
-`ptt/buddy_ptt.py` (sessão X11), dois jeitos:
+`ptt/buddy_ptt.py` (Wayland ou X11), dois jeitos:
 
 - **toque** no F9 e só fale: envia sozinho depois de 1,5 s de silêncio (`BUDDY_PTT_SILENCE`), ou num segundo toque; sem fala nenhuma em 8 s, cancela;
 - **segure** o F9 enquanto fala e solte para enviar.
@@ -61,13 +61,19 @@ O arquivo só vence quando é mais novo que o último hook, então nunca desfaz 
 O áudio é gravado com `pw-record`, transcrito pelo hub (`POST /api/transcribe`, faster-whisper em CPU, nada sai de casa) e digitado na janela em foco, seguido de Enter. Funciona em qualquer terminal ou app, com ou sem tmux.
 
 ```bash
-uv pip install --python .venv/bin/python -r hub/requirements-stt.txt python-xlib six
-uv pip install --python .venv/bin/python --no-deps pynput   # o evdev só serve para Wayland e exige python3-dev
+uv pip install --python .venv/bin/python -r hub/requirements-stt.txt evdev
+# uma vez, com sudo: ler o teclado (/dev/input) e criar o teclado virtual (/dev/uinput)
+sudo usermod -aG input $USER
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/80-uinput.rules
+sudo udevadm control --reload && sudo udevadm trigger
+# saia da sessão e entre de novo (o grupo novo só vale depois disso)
 cp deploy/systemd/*.service ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now claude-buddy-hub claude-buddy-ptt
 journalctl --user -u claude-buddy-ptt -f
 ```
 
+- **Como funciona no Linux:** o F9 é lido direto do teclado (`/dev/input`, evdev) e o texto é digitado por um teclado virtual (`/dev/uinput`), porque no Wayland nenhum app pode observar ou simular teclas pelo servidor gráfico. O teclado virtual usa o layout ABNT2: letras acentuadas saem pelas teclas mortas (´ e depois a = á), como uma pessoa digita; caracteres sem tecla (emoji) são pulados. No Windows continua o `pynput`.
+- **Cuidado com o grupo `input`:** qualquer programa do seu usuário passa a poder ler as teclas.
 - O hub sobe sozinho no login (`claude-buddy-hub.service`); o PTT sobe com a sessão gráfica (`claude-buddy-ptt.service`). Os caminhos assumem o clone em `~/personal/ClaudeBuddy`.
 - Configuração: `BUDDY_PTT_KEY` (padrão `f9`), `BUDDY_PTT_ENTER=0` para só digitar sem Enter, `BUDDY_STT_MODEL` no hub (padrão `small`; `large-v3-turbo` acerta mais jargão, mas é bem mais lento em CPU), `BUDDY_STT_LANGUAGE` (padrão `pt`; vazio = detectar), `BUDDY_STT_BEAM_SIZE` (padrão `1`, o mais rápido; `5` acerta um pouco mais, mas é 2-3× mais lento em CPU).
 - O modelo carrega na primeira transcrição (~600 MB de RAM no hub) e fica em memória.
