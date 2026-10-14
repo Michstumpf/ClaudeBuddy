@@ -34,6 +34,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import wave
 from pathlib import Path
 
@@ -94,6 +95,36 @@ def xtts_sentences(text: str) -> list[str]:
     return out
 
 
+XTTS_ATTEMPTS = 3
+
+
+def _words(text: str) -> list[str]:
+    plain = unicodedata.normalize("NFD", text.lower()).encode("ascii", "ignore").decode()
+    return re.findall(r"\w+", plain)
+
+
+def kept_last_word(heard: str, sentence: str) -> bool:
+    """Whether the transcription of a synthesized sentence still has its last word.
+
+    XTTS samples every take, and now and then a take stops early: "direito!"
+    came out as "direi". The worker's own Whisper checks each sentence.
+    """
+    last = _words(sentence)[-1:]
+    return not last or last[0] in _words(heard)[-3:]
+
+
+def to_wav(samples, rate: int) -> bytes:
+    import numpy as np
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(rate)
+        wav.writeframes((np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes())
+    return buf.getvalue()
+
+
 class XttsSpeaker:
     """XTTS-v2 (coqui-tts) on the GPU: natural Portuguese, ~1-2 s per sentence.
 
@@ -103,8 +134,11 @@ class XttsSpeaker:
 
     MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 
-    def __init__(self, speaker: str = "Gilberto Mathias", speaker_wav: str | None = None, language: str = "pt"):
+    def __init__(self, speaker: str = "Gilberto Mathias", speaker_wav: str | None = None, language: str = "pt",
+                 hear=None):
+        """hear: WAV bytes -> text, to catch takes that stop early (the worker's Whisper)."""
         self.speaker, self.speaker_wav, self.language = speaker, speaker_wav, language
+        self.hear = hear
         self._tts = None
 
     @staticmethod
@@ -126,39 +160,32 @@ class XttsSpeaker:
     def synthesize(self, text: str) -> bytes:
         import numpy as np
 
-        voice = {"speaker_wav": self.speaker_wav} if self.speaker_wav else {"speaker": self.speaker}
         rate = self._tts.synthesizer.output_sample_rate
         pause = np.zeros(int(rate * SENTENCE_PAUSE), dtype=np.float32)
         parts = []
         for sentence in xtts_sentences(text) or [text]:
             if parts:
                 parts.append(pause)
-            parts.append(np.asarray(self._tts.tts(text=sentence, language=self.language, split_sentences=False,
-                                                  **voice), dtype=np.float32))
-        samples = np.concatenate(parts)
-        pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as wav:
-            wav.setnchannels(1)
-            wav.setsampwidth(2)
-            wav.setframerate(rate)
-            wav.writeframes(pcm)
-        return buf.getvalue()
+            parts.append(self._sentence(sentence, rate))
+        return to_wav(np.concatenate(parts), rate)
 
+    def _sentence(self, sentence: str, rate: int):
+        import numpy as np
 
-def restart_process() -> None:
-    """Start a fresh worker and end this one.
-
-    A CUDA error such as "unknown error" (seen after the GPU driver hiccups)
-    breaks the CUDA context for good: every later synthesis fails at once,
-    and only a new process gets a working GPU again. The new one loads the
-    models (~1 min) before it takes the port, so this one leaves first.
-    """
-    log.error("CUDA is broken in this process: starting a fresh worker")
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen([sys.executable, "-m", "buddy_hub.worker", *sys.argv[1:]], cwd=os.getcwd(),
-                     creationflags=flags, close_fds=True)
-    threading.Timer(1.0, os._exit, args=(3,)).start()  # time for the 503 to go out
+        voice = {"speaker_wav": self.speaker_wav} if self.speaker_wav else {"speaker": self.speaker}
+        for attempt in range(1, XTTS_ATTEMPTS + 1):
+            samples = np.asarray(self._tts.tts(text=sentence, language=self.language, split_sentences=False,
+                                               **voice), dtype=np.float32)
+            if not self.hear or attempt == XTTS_ATTEMPTS:
+                return samples
+            try:
+                if kept_last_word(self.hear(to_wav(samples, rate)), sentence):
+                    return samples
+            except Exception:
+                log.exception("could not check the take; keeping it")
+                return samples
+            log.info("xtts cut a sentence short (take %d); trying again", attempt)
+        return samples
 
 
 def create_app(token: str, transcriber, busy_util: int = 90, min_free_mb: int = 300, gpu_probe=gpu_status,
@@ -264,6 +291,7 @@ def main() -> None:
             speaker=os.environ.get("BUDDY_XTTS_SPEAKER", "Gilberto Mathias"),
             speaker_wav=os.environ.get("BUDDY_XTTS_SPEAKER_WAV") or None,
             language=os.environ.get("BUDDY_STT_LANGUAGE", "pt") or "pt",
+            hear=lambda wav: transcriber.transcribe(wav)["text"],
         )
         try:
             speaker.load()

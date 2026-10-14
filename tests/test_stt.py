@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hub"))
 
 from buddy_hub import stt  # noqa: E402
 from buddy_hub.stt import RemoteFirst  # noqa: E402
-from buddy_hub.worker import create_app, xtts_sentences  # noqa: E402
+from buddy_hub.worker import create_app, kept_last_word, xtts_sentences  # noqa: E402
 
 TOKEN = "test-token"
 H = {"X-Buddy-Token": TOKEN}
@@ -192,3 +192,11 @@ def test_xtts_sentences_drop_the_final_period():
         "O que é um pontinho verde?", "Uma ervilha de castigo"]
     assert xtts_sentences("Feito. Três testes passaram!  Até mais...") == ["Feito", "Três testes passaram!", "Até mais"]
     assert xtts_sentences("Versão 2.5 pronta.") == ["Versão 2.5 pronta"]
+
+
+def test_kept_last_word():
+    sentence = "Uma nuvem que não conseguiu se formar direito!"
+    assert kept_last_word("Uma nuvem que não conseguiu se formar direito.", sentence)
+    assert kept_last_word("uma nuvem que nao conseguiu se formar DIREITO", sentence)
+    assert not kept_last_word("Uma nuvem que não conseguiu se formar direi", sentence)
+    assert kept_last_word("", "!!!")  # nothing to check
