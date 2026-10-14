@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "hub"))
 
 from buddy_hub import stt  # noqa: E402
 from buddy_hub.stt import RemoteFirst  # noqa: E402
-from buddy_hub.worker import create_app  # noqa: E402
+from buddy_hub.worker import create_app, xtts_sentences  # noqa: E402
 
 TOKEN = "test-token"
 H = {"X-Buddy-Token": TOKEN}
@@ -185,3 +185,10 @@ def test_worker_still_serves_a_gpu_shared_with_a_game():
     # 67% busy and 758 MB free (a game running) used to push dictation to the CPU.
     body = worker(gpu={"util": 67, "free_mb": 758, "name": "RTX"}).get("/health", headers=H).json()
     assert body["busy"] is False
+
+
+def test_xtts_sentences_drop_the_final_period():
+    assert xtts_sentences("O que é um pontinho verde? Uma ervilha de castigo.") == [
+        "O que é um pontinho verde?", "Uma ervilha de castigo"]
+    assert xtts_sentences("Feito. Três testes passaram!  Até mais...") == ["Feito", "Três testes passaram!", "Até mais"]
+    assert xtts_sentences("Versão 2.5 pronta.") == ["Versão 2.5 pronta"]

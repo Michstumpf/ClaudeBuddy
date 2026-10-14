@@ -28,6 +28,7 @@ import hmac
 import io
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -74,6 +75,25 @@ def gpu_status() -> dict | None:
         return None
 
 
+SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+SENTENCE_PAUSE = 0.25  # seconds of silence between sentences
+
+
+def xtts_sentences(text: str) -> list[str]:
+    """Sentences without their final period.
+
+    XTTS-v2 often reads a sentence's final "." aloud ("ponto"), so it gets
+    one sentence at a time with the period removed, and the pause between
+    sentences is added as silence. "?" and "!" stay: they shape the intonation.
+    """
+    out = []
+    for sentence in SENTENCE_END.split(text.strip()):
+        sentence = sentence.rstrip().rstrip(".…").rstrip()
+        if sentence:
+            out.append(sentence)
+    return out
+
+
 class XttsSpeaker:
     """XTTS-v2 (coqui-tts) on the GPU: natural Portuguese, ~1-2 s per sentence.
 
@@ -107,13 +127,21 @@ class XttsSpeaker:
         import numpy as np
 
         voice = {"speaker_wav": self.speaker_wav} if self.speaker_wav else {"speaker": self.speaker}
-        samples = np.asarray(self._tts.tts(text=text, language=self.language, **voice), dtype=np.float32)
+        rate = self._tts.synthesizer.output_sample_rate
+        pause = np.zeros(int(rate * SENTENCE_PAUSE), dtype=np.float32)
+        parts = []
+        for sentence in xtts_sentences(text) or [text]:
+            if parts:
+                parts.append(pause)
+            parts.append(np.asarray(self._tts.tts(text=sentence, language=self.language, split_sentences=False,
+                                                  **voice), dtype=np.float32))
+        samples = np.concatenate(parts)
         pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wav:
             wav.setnchannels(1)
             wav.setsampwidth(2)
-            wav.setframerate(self._tts.synthesizer.output_sample_rate)
+            wav.setframerate(rate)
             wav.writeframes(pcm)
         return buf.getvalue()
 
