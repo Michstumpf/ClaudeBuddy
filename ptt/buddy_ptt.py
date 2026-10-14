@@ -333,16 +333,18 @@ def listen_evdev(key_name: str, on_down, on_up) -> None:
     Auto-repeat arrives as value 2 and is ignored, so holding the key is one
     down and one up. The key still reaches the focused app, as before.
     """
+    import glob
     import selectors
 
-    from evdev import InputDevice, ecodes, list_devices
+    from evdev import InputDevice, ecodes
 
     code = ecodes.ecodes[f"KEY_{key_name.upper()}"]
     sel = selectors.DefaultSelector()
     watched: dict[str, InputDevice] = {}
     warned = False
     while True:
-        for path in set(list_devices()) - watched.keys():
+        # Not evdev.list_devices(): newer versions skip devices we can only read.
+        for path in set(glob.glob("/dev/input/event*")) - watched.keys():
             try:
                 dev = InputDevice(path)
             except OSError:
