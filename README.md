@@ -156,6 +156,7 @@ F9 / Buddy ──áudio──▶ hub (Ubuntu) ──Tailscale──▶ worker (d
    powershell -ExecutionPolicy Bypass -File deploy\windows\install-worker.ps1
    ```
    O script cria o venv, instala as dependências (incluindo a voz XTTS-v2: PyTorch com CUDA + coqui-tts, ~3 GB; `-NoVoice` pula), pede o token do hub (`cat ~/.config/claude-buddy/token` no Ubuntu), testa a GPU (baixa ~1,6 GB na primeira vez), libera a porta 8766 no firewall **só para a faixa do Tailscale** e agenda o worker para subir no login, escondido. Log em `%LOCALAPPDATA%\ClaudeBuddy\worker.log`. Pode rodar de novo depois de um `git pull`.
+5. **Para atualizar depois:** clique duas vezes em `deploy\windows\restart-worker.cmd`. Ele faz `git pull`, reinicia a tarefa e espera o worker responder (~1-2 min, por causa da voz). Não precisa de administrador. Se mudarem as dependências, rode o `install-worker.ps1` de novo.
 
 ### 3. Ubuntu: apontar o hub para o desktop
 
