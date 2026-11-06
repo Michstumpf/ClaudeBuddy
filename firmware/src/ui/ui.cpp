@@ -49,8 +49,9 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-constexpr int kPrefs = 12;
-// jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro length, wifi, volume, brightness, mic
+constexpr int kPrefs = 14;
+// jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro length, wifi, volume, brightness, mic,
+// flat sleep, face-down sleep
 lv_obj_t* pref_btn_[kPrefs];
 void (*setup_handler_)() = nullptr;
 void (*dictate_start_)() = nullptr;
@@ -705,6 +706,14 @@ void on_pref(lv_event_t* e) {
     case 9: s.volume = next_of(kLevels, s.volume); break;
     case 10: s.brightness = next_of(kBright, s.brightness); break;
     case 11: s.mic = !s.mic; break;
+    case 12: {
+      const int options[] = {0, 1, 5, 15};
+      size_t i = 0;
+      while (i < 4 && options[i] != s.flat_sleep_min) i++;
+      s.flat_sleep_min = options[(i + 1) % 4];
+      break;
+    }
+    case 13: s.face_down_sleep = !s.face_down_sleep; break;
   }
   if (send_) send_(app::settings(s));
 }
@@ -719,10 +728,11 @@ constexpr Page kPages[] = {
     {"Som e tela", {9, 10, 4, 11}, nullptr},
     {"Pomodoro", {7, -1}, "A duração vale a partir do próximo pomodoro."},
     {"Avisos e clima", {3, 6, 5, -1}, nullptr},
+    {"Sono", {12, 13, -1}, "Dorme sem toque deitado, ou virado para baixo. Acorda ao tocar ou levantar."},
     {"WiFi e hub", {8, -1}, "Configurar abre a rede Buddy-setup para trocar o WiFi ou o hub."},
     {"Sistema", {-1}, nullptr},  // live numbers, see set_stats
 };
-constexpr int kSystemPage = 5;
+constexpr int kSystemPage = 6;
 constexpr int kPageCount = sizeof(kPages) / sizeof(*kPages);
 lv_obj_t* pages_[kPageCount];
 lv_obj_t *page_title_, *page_count_;
@@ -748,7 +758,7 @@ void build_settings(lv_obj_t* v) {
   const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
                                "Temperatura lá fora", "Visual", "Indicador de bateria",
                                "Aviso de tarefa longa", "Foco + pausa", "WiFi e hub", "Volume", "Brilho",
-                               "Microfone (botão)"};
+                               "Microfone (botão)", "Deitado (tela p/ cima)", "Virado para baixo"};
   for (int p = 0; p < kPageCount; p++) {
     pages_[p] = lv_obj_create(v);
     lv_obj_remove_style_all(pages_[p]);
@@ -810,7 +820,8 @@ void fill_settings() {
   const app::Settings& st = state_.settings;
   bool on[kPrefs] = {st.jokes, st.joke_voice, false, st.weather, false, st.show_battery};
   on[11] = st.mic;
-  for (int i : {0, 1, 3, 5, 11}) {
+  on[13] = st.face_down_sleep;
+  for (int i : {0, 1, 3, 5, 11, 13}) {
     set_button_text(pref_btn_[i], on[i] ? "Ligado" : "Desligado");
     lv_obj_set_style_bg_color(pref_btn_[i], on[i] ? kBtnOk : kBtn, 0);
   }
@@ -829,6 +840,12 @@ void fill_settings() {
   if (plus != std::string::npos) pomo = pomo.substr(0, plus) + " + " + pomo.substr(plus + 1) + " min";
   set_button_text(pref_btn_[7], pomo.c_str());
   set_button_text(pref_btn_[8], "Configurar");
+  if (st.flat_sleep_min) {
+    snprintf(buf, sizeof(buf), "%d min", st.flat_sleep_min);
+    set_button_text(pref_btn_[12], buf);
+  } else {
+    set_button_text(pref_btn_[12], "Desligado");
+  }
   set_button_text(pref_btn_[9], st.volume == "off" ? "Mudo" : st.volume == "low" ? "Baixo" : st.volume == "high" ? "Alto" : "Médio");
   set_button_text(pref_btn_[10], st.brightness == "low" ? "Baixo" : st.brightness == "mid" ? "Médio"
                                  : st.brightness == "high" ? "Alto" : "Automático");

@@ -364,6 +364,11 @@
             <div class="opt"><span>Aviso de tarefa longa</span><button class="btn" id="prefLong"></button></div>
             <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
           </div>
+          <div class="optlist" data-page="Sono">
+            <div class="opt"><span>Deitado (tela p/ cima)</span><button class="btn" data-cycle="flat_sleep_min"></button></div>
+            <div class="opt"><span>Virado para baixo</span><button class="btn" data-pref="face_down_sleep"></button></div>
+            <div class="opt note">Dorme sem toque deitado, ou virado para baixo. Acorda ao tocar ou levantar.</div>
+          </div>
           <div class="optlist" data-page="WiFi e hub">
             <div class="opt"><span>Hub</span><span id="hubAddr"></span></div>
             <div class="opt"><span>Conexão</span><span id="hubLink"></span></div>
@@ -785,6 +790,7 @@ $("prefLong").onclick = (e) => {
 const CYCLES = {
   volume: { order: ["off", "low", "mid", "high"], labels: { off: "Mudo", low: "Baixo", mid: "Médio", high: "Alto" } },
   brightness: { order: ["auto", "low", "mid", "high"], labels: { auto: "Automático", low: "Baixo", mid: "Médio", high: "Alto" } },
+  flat_sleep_min: { order: [0, 1, 5, 15], labels: { 0: "Desligado", 1: "1 min", 5: "5 min", 15: "15 min" } },
   pomodoro: { order: ["15+5", "25+5", "50+10"], labels: { "15+5": "15 + 5 min", "25+5": "25 + 5 min", "50+10": "50 + 10 min" } },
 };
 document.querySelectorAll("[data-cycle]").forEach(b => b.onclick = (e) => {

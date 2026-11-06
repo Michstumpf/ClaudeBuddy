@@ -250,3 +250,11 @@ def test_volume_and_brightness_prefs(tmp_path):
     assert p.update({"volume": "off", "brightness": "high"})
     assert not p.update({"volume": "loud", "brightness": 3})  # unknown values are ignored
     assert (p["volume"], p["brightness"]) == ("off", "high")
+
+
+def test_sleep_gesture_prefs(tmp_path):
+    p = prefs_module.Prefs(path=tmp_path / "p.json")
+    assert (p["flat_sleep_min"], p["face_down_sleep"]) == (1, True)
+    assert p.update({"flat_sleep_min": 5, "face_down_sleep": False})
+    assert not p.update({"flat_sleep_min": 7})  # only the offered options
+    assert (p["flat_sleep_min"], p["face_down_sleep"]) == (5, False)

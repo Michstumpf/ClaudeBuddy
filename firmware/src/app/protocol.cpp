@@ -65,6 +65,8 @@ Incoming parse(const std::string& json) {
       if (!str(set["brightness"]).empty()) st.settings.brightness = str(set["brightness"]);
       if (!str(set["pomodoro"]).empty()) st.settings.pomodoro = str(set["pomodoro"]);
       st.settings.mic = set["mic"] | false;
+      st.settings.flat_sleep_min = set["flat_sleep_min"] | 1;
+      st.settings.face_down_sleep = set["face_down_sleep"] | true;
     }
     JsonObjectConst w = doc["weather"];
     if (!w.isNull()) {
@@ -179,6 +181,8 @@ std::string settings(const Settings& s) {
   v["brightness"] = s.brightness;
   v["pomodoro"] = s.pomodoro;
   v["mic"] = s.mic;
+  v["flat_sleep_min"] = s.flat_sleep_min;
+  v["face_down_sleep"] = s.face_down_sleep;
   return dump(doc);
 }
 

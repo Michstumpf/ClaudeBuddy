@@ -153,6 +153,7 @@ Sensors read_sensors() {
       down_since = 0;
     }
     s.face_down = down_since && millis() - down_since > 1000;
+    s.face_up = az > 0.85f;
   }
   return s;
 }

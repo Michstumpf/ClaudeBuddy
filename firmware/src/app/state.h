@@ -39,6 +39,8 @@ struct Settings {
   std::string volume = "mid";       // off | low | mid | high
   std::string brightness = "auto";  // auto (light sensor) | low | mid | high
   std::string pomodoro = "25+5";    // focus + break minutes: 15+5 | 25+5 | 50+10
+  int flat_sleep_min = 1;           // lying screen-up this long untouched: night (0 = off)
+  bool face_down_sleep = true;      // screen down on the desk: night
   bool mic = false;                 // the 🎤 button on the face (record → read the text → pick a session)
 };
 

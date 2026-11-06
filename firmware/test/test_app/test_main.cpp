@@ -107,7 +107,7 @@ void test_outgoing_messages() {
   Settings s;
   s.joke_voice = false;
   TEST_ASSERT_EQUAL_STRING(
-      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic","battery":true,"long_task_min":15,"volume":"mid","brightness":"auto","pomodoro":"25+5","mic":false}})",
+      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic","battery":true,"long_task_min":15,"volume":"mid","brightness":"auto","pomodoro":"25+5","mic":false,"flat_sleep_min":1,"face_down_sleep":true}})",
       settings(s).c_str());
 }
 

@@ -296,9 +296,22 @@ void loop() {
         send_to_hub(app::joke_now());
       }
       // Screen down on the desk: night mode; picked up: awake.
+      const app::Settings& prefs = ui::settings();
       if (s.face_down != was_down) {
         was_down = s.face_down;
-        send_to_hub(app::night(s.face_down));
+        if (prefs.face_down_sleep) send_to_hub(app::night(s.face_down));
+      }
+      // Lying flat, screen up (no scratches): night mode after a minute without a
+      // touch, so it never dozes off while in use; picked up: awake. A touch wakes
+      // it through the hub, and it needs another untouched minute to doze again.
+      static bool flat_asleep = false;
+      if (s.face_up && !flat_asleep && prefs.flat_sleep_min > 0 &&
+          lv_display_get_inactive_time(nullptr) > prefs.flat_sleep_min * 60000u) {
+        flat_asleep = true;
+        send_to_hub(app::night(true));
+      } else if (flat_asleep && (!s.face_up || lv_display_get_inactive_time(nullptr) < 1000)) {
+        flat_asleep = false;
+        if (!s.face_up) send_to_hub(app::night(false));
       }
       if (s.near != near_ || (s.light >= 0 && abs(s.light - light_) > 30)) {
         near_ = s.near;
