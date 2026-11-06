@@ -148,3 +148,16 @@ def test_transcribe_only_leaves_commands_to_the_buddy(monkeypatch):
     assert result["handled"] is True and "HIPAA" in result["detail"]
     assert sent == [("%7", "roda os testes.")]
     assert unknown == {"type": "command_result", "handled": False, "detail": "não entendi esse comando"}
+
+
+def test_dictate_to_the_focused_window(monkeypatch):
+    # Sessions outside tmux: the Buddy's "Janela em foco" types like the F9 key.
+    app = hub_with(monkeypatch, "")
+    typed = []
+    monkeypatch.setattr(app_module.FocusTyper, "type_soon", lambda self, text: typed.append(text))
+    with TestClient(app) as c, c.websocket_connect(f"/ws?token={TOKEN}") as ws:
+        ws.receive_json()
+        ws.send_json({"type": "dictate", "session_id": "focus", "text": "roda os testes"})
+        result = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "dictate_result")
+    assert result["ok"] is True and result["backend"] == "focus"
+    assert typed == ["roda os testes"]

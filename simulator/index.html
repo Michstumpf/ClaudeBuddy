@@ -898,6 +898,11 @@ function fillPick() {
     $("pickText").textContent = "enviando comando…";
     send({ type: "command", text: pickedText });
   });
+  // Sessions outside tmux: type into the focused window on the notebook, like F9.
+  add("⌨ Janela em foco", "no notebook, como o F9", "", true, () => {
+    $("pickText").textContent = "digitando na janela em foco…";
+    send({ type: "dictate", session_id: "focus", text: pickedText });
+  });
   // The last session used first; sessions without tmux can't be typed into.
   const sessions = state.sessions.filter(x => x.status !== "offline")
     .sort((a, b) => (b.id === last) - (a.id === last));

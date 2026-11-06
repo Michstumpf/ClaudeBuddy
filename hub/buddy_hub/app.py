@@ -35,6 +35,7 @@ from . import intents
 from .claude_usage import ClaudeUsage
 from .daystats import DayStats
 from . import calendar_watch, github_watch, work_watch
+from .focus_typer import FocusTyper
 from .jokes import JokeTeller
 from .local_sessions import read_local_sessions
 from .pomodoro import Pomodoro
@@ -47,6 +48,8 @@ from .tts import RemoteFirstSpeaker, Speaker, louder, speakable, to_stereo
 
 log = logging.getLogger("buddy.hub")
 SIMULATOR = Path(__file__).resolve().parents[2] / "simulator" / "index.html"
+# Dictation target for sessions outside tmux: the window that has focus on the hub machine.
+FOCUS_TARGET = "focus"
 
 
 class NetworkAllowlist:
@@ -95,6 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     summarizer = Summarizer(load_key())
     prefs = Prefs(settings.prefs_file, defaults={**settings.pref_defaults, "city": settings.weather_city})
     jokes = JokeTeller()
+    focus_typer = FocusTyper()
     hub.extra["settings"] = prefs.values
     hub.extra["weather"] = None
     battery = BatteryWatch()
@@ -497,6 +501,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     hub.add_listener(broadcast)
 
     def dictate(session_id: str | None, text: str) -> dict:
+        if session_id == FOCUS_TARGET:  # sessions outside tmux: type where the user is
+            hub.note_voice_text(text)
+            focus_typer.type_soon(text)
+            return {"ok": True, "detail": "digitando na janela em foco", "backend": "focus", "session": "janela em foco"}
         session = hub.sessions.get(session_id or "")
         if session is None:
             return {"ok": False, "detail": "unknown session"}
