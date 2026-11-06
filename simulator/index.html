@@ -150,6 +150,7 @@
   #v-settings .optlist:not(.on) { display: none; }
   #v-settings .opt { min-height: 30px; }
   #v-settings .opt > span { line-height: 30px; }
+  #v-settings .opt.note { color: #7d776f; font-size: 10px; background: none; min-height: 0; }
   .pager { align-items: center; margin-top: auto; }
   .pager .btn { flex: none; min-width: 64px; } .pager #pagePrev, .pager #pageNext { min-width: 56px; font-size: 16px; padding: 3px 4px; }
   .pager #pagePrev { margin-left: auto; }
@@ -280,9 +281,18 @@
             <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
             <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
           </div>
+          <div class="optlist" data-page="Pomodoro">
+            <div class="opt"><span>Foco + pausa</span><button class="btn" data-cycle="pomodoro"></button></div>
+            <div class="opt note">A duração vale a partir do próximo pomodoro.</div>
+          </div>
           <div class="optlist" data-page="Avisos e clima">
             <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
             <div class="opt"><span>Aviso de tarefa longa</span><button class="btn" id="prefLong"></button></div>
+          </div>
+          <div class="optlist" data-page="WiFi e hub">
+            <div class="opt"><span>Hub</span><span id="hubAddr"></span></div>
+            <div class="opt"><span>Conexão</span><span id="hubLink"></span></div>
+            <div class="opt note">No Buddy, "Configurar" abre a rede Buddy-setup para trocar o WiFi.</div>
           </div>
           <div class="btns pager">
             <button class="btn" data-go="menu">◀ Menu</button>
@@ -506,7 +516,7 @@ function render() {
     $("menuSessions").textContent = !open.length ? "nenhuma aberta"
       : waiting ? `${open.length} abertas · ${waiting} esperando` : `${open.length} abertas · ${busy} trabalhando`;
     $("menuPomo").classList.toggle("on", !!state.pomodoro);
-    $("menuPomoSub").textContent = state.pomodoro ? `parar · ${pomoLeftText()}` : "25 min de foco";
+    $("menuPomoSub").textContent = state.pomodoro ? pomoLeftText() : `${pomoLength()[0]} min de foco`;
     const now = new Date();
     $("menuClock").textContent = now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
   }
@@ -519,6 +529,8 @@ function render() {
     $("prefSkin").textContent = state.settings.skin === "eyes" ? "Só os olhos" : "Clássico";
     const lt = state.settings.long_task_min;
     $("prefLong").textContent = lt ? `${lt} min` : "Desligado";
+    $("hubAddr").textContent = location.host;
+    $("hubLink").textContent = connected ? "conectado" : "desconectado";
     document.querySelectorAll("[data-cycle]").forEach(b => {
       b.textContent = CYCLES[b.dataset.cycle].labels[state.settings[b.dataset.cycle]] || "—";
     });
@@ -641,6 +653,7 @@ function meetingText() {
   return "";
 }
 let calAt = Date.now();
+function pomoLength() { return ((state.settings || {}).pomodoro || "25+5").split("+").map(Number); }
 function pomoLeftText() {
   const left = Math.max(0, Math.round((pomoEnds - Date.now()) / 1000));
   const mmss = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
@@ -650,13 +663,13 @@ function tickPomo() {
   $("pomo").textContent = pomoPhase ? pomoLeftText() : meetingText();
   if (view !== "pomo") return;
   const p = state.pomodoro;
-  const left = p ? Math.max(0, Math.round((pomoEnds - Date.now()) / 1000)) : 25 * 60;
+  const left = p ? Math.max(0, Math.round((pomoEnds - Date.now()) / 1000)) : pomoLength()[0] * 60;
   $("pomoTime").textContent = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
   $("pomoPhase").textContent = !p ? "POMODORO" : p.phase === "focus" ? "FOCO" : "PAUSA";
   $("pomoPhase").className = "pomo-phase" + (p ? " " + p.phase : "");
   $("pomoBar").classList.toggle("break", !!p && p.phase === "break");
   $("pomoFill").style.width = p && p.length ? `${100 * (1 - left / p.length)}%` : "0";
-  $("pomoRounds").textContent = !p ? "25 min de foco + 5 de pausa"
+  $("pomoRounds").textContent = !p ? `${pomoLength()[0]} min de foco + ${pomoLength()[1]} de pausa`
     : p.rounds ? `${p.rounds} ${p.rounds === 1 ? "ciclo completo" : "ciclos completos"}` : "primeiro ciclo";
   $("pomoToggle").textContent = p ? "■ Parar" : "▶ Iniciar";
   $("pomoToggle").className = "btn " + (p ? "bad" : "ok");
@@ -674,6 +687,7 @@ $("prefLong").onclick = (e) => {
 const CYCLES = {
   volume: { order: ["off", "low", "mid", "high"], labels: { off: "Mudo", low: "Baixo", mid: "Médio", high: "Alto" } },
   brightness: { order: ["auto", "low", "mid", "high"], labels: { auto: "Automático", low: "Baixo", mid: "Médio", high: "Alto" } },
+  pomodoro: { order: ["15+5", "25+5", "50+10"], labels: { "15+5": "15 + 5 min", "25+5": "25 + 5 min", "50+10": "50 + 10 min" } },
 };
 document.querySelectorAll("[data-cycle]").forEach(b => b.onclick = (e) => {
   e.stopPropagation();

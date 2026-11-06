@@ -45,6 +45,14 @@ def test_long_task_pref():
     assert not p.update({"long_task_min": 7})
 
 
+def test_pomodoro_length_from_the_setting():
+    p = Pomodoro()
+    assert "50 minutos" in p.start(now=0, length="50+10")
+    assert p.public(now=0)["length"] == 50 * 60
+    p.skip(now=0)
+    assert p.public(now=0)["length"] == 10 * 60
+
+
 def test_pomodoro_skip():
     p = Pomodoro(focus_min=25, break_min=5)
     assert p.skip(now=0) is None  # not running

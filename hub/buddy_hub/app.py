@@ -190,7 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         hub.extra["pomodoro"] = pomodoro.public()
 
     async def pomodoro_command(action: str) -> None:
-        text = pomodoro.start() if action == "start" else pomodoro.skip() if action == "skip" else pomodoro.stop()
+        text = pomodoro.start(length=prefs["pomodoro"]) if action == "start" else pomodoro.skip() if action == "skip" else pomodoro.stop()
         refresh_focus()
         await hub.notify(None)
         if text:

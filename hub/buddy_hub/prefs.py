@@ -16,6 +16,7 @@ DEFAULTS = {
     "skin": "classic",         # classic: the whole mascot | eyes: only its eyes, for a mascot-shaped case
     "battery": True,           # battery indicator in the status bar (boards with a battery)
     "volume": "mid",           # speaker: off | low | mid | high (off: bubbles only, no sound)
+    "pomodoro": "25+5",        # focus + break minutes, one of POMODORO_LENGTHS
     "brightness": "auto",      # screen: auto (light sensor) | low | mid | high; night and low battery still dim it
     "long_task_min": 15,       # notice when a session works this long (0 = off)
     "daily_summary": True,     # say the day's summary at "boa noite"
@@ -33,6 +34,7 @@ JOKE_INTERVALS = (15, 30, 45, 60, 120)
 SKINS = ("classic", "eyes")
 VOLUMES = ("off", "low", "mid", "high")
 BRIGHTNESS = ("auto", "low", "mid", "high")
+POMODORO_LENGTHS = ("15+5", "25+5", "50+10")
 LONG_TASK_OPTIONS = (0, 10, 15, 30, 60)
 
 
@@ -70,8 +72,9 @@ class Prefs:
             if key == "city_geo":
                 if value is not None and not (isinstance(value, dict) and {"name", "lat", "lon"} <= value.keys()):
                     continue
-            elif key in ("skin", "volume", "brightness"):
-                if value not in {"skin": SKINS, "volume": VOLUMES, "brightness": BRIGHTNESS}[key]:
+            elif key in ("skin", "volume", "brightness", "pomodoro"):
+                if value not in {"skin": SKINS, "volume": VOLUMES, "brightness": BRIGHTNESS,
+                                 "pomodoro": POMODORO_LENGTHS}[key]:
                     continue
             elif key == "city":
                 value = " ".join(str(value or "").split())[:CITY_MAX_CHARS]

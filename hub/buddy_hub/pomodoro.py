@@ -15,8 +15,12 @@ class Pomodoro:
         self.ends_at = 0.0
         self.rounds = 0
 
-    def start(self, now: float | None = None) -> str:
+    def start(self, now: float | None = None, length: str | None = None) -> str:
+        """length: "focus+break" minutes (the "pomodoro" setting); keeps the current one if None."""
         now = time.time() if now is None else now
+        if length:
+            focus_min, break_min = (int(x) for x in length.split("+"))
+            self.focus_s, self.break_s = focus_min * 60, break_min * 60
         self.phase, self.ends_at, self.rounds = "focus", now + self.focus_s, 0
         return f"Pomodoro: {self.focus_s // 60} minutos de foco. Bora!"
 
