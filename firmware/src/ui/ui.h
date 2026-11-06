@@ -46,6 +46,16 @@ struct MicHandlers {
   void (*finish)(bool send) = nullptr;  // stop; if send, transcribe and call show_transcript
 };
 void set_mic_handlers(const MicHandlers& handlers);
+
+// Short press on the power button: Dormir / Reiniciar / Desligar / Cancelar.
+// Pressing it again (or 10 s without a choice) closes the window.
+struct PowerHandlers {
+  void (*sleep)() = nullptr;
+  void (*restart)() = nullptr;
+  void (*off)() = nullptr;
+};
+void set_power_handlers(const PowerHandlers& handlers);
+void toggle_power_menu();
 void show_transcript(bool ok, const std::string& text);  // text, or why it failed
 void on_send_result(bool ok, const std::string& detail);  // dictate_result / command_result
 void loop();  // animations and timeouts; call often

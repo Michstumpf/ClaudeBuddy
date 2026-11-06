@@ -26,6 +26,8 @@ bool charging();
 // Backlight 0-255 (no-op without a dimmable backlight).
 void set_brightness(uint8_t level);
 void set_volume(uint8_t level);  // speaker, 0 = mute .. 255
+bool power_clicked();  // a short press of the power button since the last call
+void power_off();      // cuts the power (with USB plugged in, the charger may wake it again)
 
 // ---- audio (kHasAudio). Mic and speaker may share one bus: recording stops playback.
 // 16 kHz mono PCM. record_loop() must be called often while recording.

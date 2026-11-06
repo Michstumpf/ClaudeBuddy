@@ -39,6 +39,10 @@ int battery_percent() { return M5.Power.getBatteryLevel(); }
 bool charging() { return M5.Power.isCharging() == m5::Power_Class::is_charging_t::is_charging; }
 void set_brightness(uint8_t level) { M5.Display.setBrightness(level); }
 void set_volume(uint8_t level) { M5.Speaker.setVolume(level); }
+// The power key goes through the PMIC; M5.update() (in touch()) reads it. Holding
+// it ~6 s still powers off in hardware, whatever the firmware does.
+bool power_clicked() { return M5.BtnPWR.wasClicked(); }
+void power_off() { M5.Power.powerOff(); }
 
 // ---- audio ------------------------------------------------------------------
 // On the CoreS3 the mic and the speaker share the I2S bus: one at a time.

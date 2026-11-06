@@ -82,6 +82,9 @@ std::string face_phase_;  // pomodoro phase the face is drawn for
 // Shaken: dizzy (spiral eyes, wobbling, stars around the head) until the joke arrives.
 uint32_t dizzy_until_ = 0;
 MicHandlers mic_;             // the 🎤 flow, see set_mic_handlers
+PowerHandlers power_;         // the power button's window
+lv_obj_t* power_menu_ = nullptr;
+uint32_t power_menu_at_ = 0;
 lv_obj_t* mic_btn_ = nullptr;
 lv_obj_t* fx_stars_[3];
 // Idle blink, like the simulator: eyes shut for 140 ms every 3.5 s.
@@ -1141,6 +1144,50 @@ void build_pick(lv_obj_t* v) {
   lv_obj_set_pos(cancel, 8, 176);
 }
 
+// ---- power button: a window with Dormir / Reiniciar / Desligar ----
+
+void close_power_menu() {
+  if (!power_menu_) return;
+  lv_obj_delete(power_menu_);
+  power_menu_ = nullptr;
+}
+
+void on_power_choice(lv_event_t* e) {
+  const uintptr_t choice = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
+  close_power_menu();
+  if (choice == 1 && power_.sleep) power_.sleep();
+  if (choice == 2 && power_.restart) {
+    show_message("Reiniciando…", "volto em alguns segundos");
+    power_.restart();
+  }
+  if (choice == 3 && power_.off) {
+    show_message("Desligando…", "aperte o power para ligar de novo");
+    delay(800);
+    power_.off();
+  }
+}
+
+void open_power_menu() {
+  power_menu_ = box(lv_layer_top(), 0, 0, 320, 240, kBg);
+  lv_obj_set_style_bg_opa(power_menu_, LV_OPA_80, 0);
+  lv_obj_add_flag(power_menu_, LV_OBJ_FLAG_CLICKABLE);  // swallow taps around the panel
+  lv_obj_t* panel = box(power_menu_, 30, 14, 260, 212, kBox);
+  lv_obj_set_style_radius(panel, 10, 0);
+  lv_obj_t* title = text(panel, &buddy_font_13, kFg);
+  lv_label_set_text(title, "Energia");
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+  const struct { const char* label; lv_color_t color; } items[] = {
+      {"☾ Dormir", kBtnInfo}, {"Reiniciar", kBtn}, {"Desligar", kBtnBad}, {"Cancelar", kBtn}};
+  for (int i = 0; i < 4; i++) {
+    lv_obj_t* b = button(panel, items[i].label, items[i].color, on_power_choice,
+                         reinterpret_cast<void*>(static_cast<uintptr_t>(i == 3 ? 0 : i + 1)));
+    lv_obj_set_size(b, 236, 38);
+    lv_obj_set_pos(b, 12, 32 + i * 44);
+  }
+  power_menu_at_ = millis();
+  lv_display_trigger_activity(nullptr);
+}
+
 // ---- navigation ----
 
 void show(View v) {
@@ -1435,6 +1482,13 @@ const app::Settings& settings() { return state_.settings; }
 
 void set_mic_handlers(const MicHandlers& handlers) { mic_ = handlers; }
 
+void set_power_handlers(const PowerHandlers& handlers) { power_ = handlers; }
+
+void toggle_power_menu() {
+  if (power_menu_) close_power_menu();
+  else open_power_menu();
+}
+
 void show_transcript(bool ok, const std::string& text) {
   if (view_ != kPick) return;
   if (!ok || text.empty()) {
@@ -1472,6 +1526,7 @@ void set_stats(const Stats& st) {
 void loop() {
   animate();
   tick_rec();
+  if (power_menu_ && millis() - power_menu_at_ > 10000) close_power_menu();
   if (pick_back_at_ && millis() > pick_back_at_) {
     pick_back_at_ = 0;
     if (view_ == kPick) show(kFace);

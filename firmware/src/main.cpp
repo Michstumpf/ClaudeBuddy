@@ -179,6 +179,14 @@ static void mic_finish(bool send) {
   ui::show_transcript(t.ok, t.ok ? t.text : t.detail);
 }
 
+// Power button window (ui::toggle_power_menu).
+static void power_sleep() { send_to_hub(app::night(true)); }
+static void power_restart() {
+  delay(600);
+  ESP.restart();
+}
+static void power_off() { hal::board::power_off(); }
+
 static void on_message(const std::string& json) {
   if (local_command(json)) return;
   app::Incoming in = app::parse(json);
@@ -238,6 +246,11 @@ void setup() {
     mic.finish = mic_finish;
     ui::set_mic_handlers(mic);
   }
+  ui::PowerHandlers power;
+  power.sleep = power_sleep;
+  power.restart = power_restart;
+  power.off = power_off;
+  ui::set_power_handlers(power);
 #if !defined(BOARD_WOKWI_S3)  // Wokwi can't host an access point: keep the serial link there
   if (!net::configured()) open_setup_portal();  // first boot: set up from the phone
 #endif
@@ -335,6 +348,7 @@ void loop() {
       update_brightness(percent, charging);
     }
   }
+  if (hal::board::power_clicked()) ui::toggle_power_menu();
   ui::loop();
   hal::lvgl_loop();
   busy_us += micros() - loop_started;

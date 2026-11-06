@@ -41,6 +41,8 @@ int battery_percent() { return -1; }
 bool charging() { return false; }
 void set_brightness(uint8_t) {}
 void set_volume(uint8_t) {}
+bool power_clicked() { return false; }
+void power_off() {}
 int record_level() { return 0; }
 float record_seconds() { return 0; }
 
