@@ -99,6 +99,23 @@
   .skin-eyes .joking .clawd { transform: none; }
   .s-off .sprite { transform: translateY(1px); }
 
+  /* Pomodoro: headphones and music notes while focusing, a coffee mug on the break,
+     and a thin progress bar under the mascot to read the time left from afar. */
+  .clawd .fx-phones .band { fill: #8a8f99; } .clawd .fx-phones .cup { fill: #4a4f59; } .clawd .fx-phones .pad { fill: #e8875f; }
+  .clawd .fx-mug .mug { fill: #e9e4dc; } .clawd .fx-mug .coffee { fill: #7a4a2e; }
+  .clawd .fx-steam rect { fill: #8a857f; }
+  .clawd .fx-notes text { font: 2.4px ui-monospace, monospace; fill: #e8875f; }
+  .clawd .fx-pomo .track { fill: #2a2d33; } .clawd .fx-pomo .fill { fill: #e8875f; transition: width .5s linear; }
+  .pomo-break .clawd .fx-pomo .fill { fill: #6fc59a; }
+  .pomo-focus .fx-phones, .pomo-focus .fx-notes, .pomo-focus .fx-pomo { opacity: 1; }
+  .pomo-break .fx-mug, .pomo-break .fx-steam, .pomo-break .fx-pomo { opacity: 1; }
+  .pomo-focus .fx-notes text { animation: float 2.4s ease-in infinite; }
+  .pomo-focus .fx-notes text:nth-child(2) { animation-delay: 1.2s; }
+  .pomo-focus:not(.s-work) .sprite { animation: groove 1.2s ease-in-out infinite; }
+  .pomo-break .fx-steam rect { animation: float 2s ease-in infinite; }
+  .pomo-break .fx-steam rect:nth-child(2) { animation-delay: 1s; }
+  .skin-eyes .fx-notes, .skin-eyes .fx-steam, .skin-eyes .fx-pomo { display: none; }
+  @keyframes groove { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
   @keyframes bob { 50% { transform: translateY(-0.5px); } }
   @keyframes step { 50% { transform: translateY(-1px); } }
   @keyframes look { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 60% { transform: translateX(1px); } }
@@ -220,7 +237,12 @@
               <g class="legs legs-a" id="cLegsA"></g>
               <g class="legs legs-b" id="cLegsB"></g>
               <g class="eyes" id="cEyes"></g>
+              <g class="fx fx-phones" id="cPhones"></g>
+              <g class="fx fx-mug" id="cMug"></g>
             </g>
+            <g class="fx fx-notes"><text x="16.5" y="-0.5">♪</text><text x="-1.5" y="0">♫</text></g>
+            <g class="fx fx-steam"><rect x="18.6" y="3" width="0.4" height="1"/><rect x="19.6" y="2.6" width="0.4" height="1"/></g>
+            <g class="fx fx-pomo"><rect class="track" x="1" y="10.6" width="16" height="0.5"/><rect class="fill" id="pomoMini" x="1" y="10.6" width="0" height="0.5"/></g>
             <g class="fx fx-z"><text x="15" y="-0.5">z</text><text x="16" y="-1.5">z</text><text x="17" y="-2.5">Z</text></g>
             <g class="fx fx-alert"><rect x="8.5" y="-3.8" width="1" height="2.2"/><rect x="8.5" y="-1.2" width="1" height="0.8"/></g>
             <g class="fx fx-spark">
@@ -469,6 +491,7 @@ function mood() {
   if (ss.some(s => s.status === "waiting")) return ["s-wait", "alguém precisa de você!"];
   if (lastEvent && lastEvent.kind === "done" && Date.now() - lastEventAt < 8000) return ["s-done", doneLabel(lastEvent)];
   if (ss.some(s => s.status === "working")) return ["s-work", null];  // label driven by the spinner
+  if (state.pomodoro) return ["s-idle", state.pomodoro.phase === "focus" ? "modo foco 🎧" : "pausa ☕ levanta e alonga"];
   const b = state.battery;
   if (b && b.percent <= 10 && !b.charging) return [ss.length ? "s-idle" : "s-sleep", "bateria fraca, me carrega?"];
   if (ss.length) return ["s-idle", "tudo tranquilo"];
@@ -481,6 +504,10 @@ function render() {
     const joking = $("face").classList.contains("joking");
     $("face").className = "face " + m + (joking ? " joking" : ""); drawEyes(m);
   }
+  const phase = state.pomodoro && state.pomodoro.phase;
+  $("face").classList.toggle("pomo-focus", phase === "focus");
+  $("face").classList.toggle("pomo-break", phase === "break");
+  if (m === "s-idle") setEyes(phase === "break" ? EYES.happy : EYES.open);  // relaxed on the break
   if (label !== null) $("faceLabel").textContent = label;
   else if (!spinTimer) startSpinner();
   $("device").classList.toggle("alert", state.pending.length > 0 || state.sessions.some(s => s.status === "waiting"));
@@ -661,6 +688,11 @@ function pomoLeftText() {
 }
 function tickPomo() {
   $("pomo").textContent = pomoPhase ? pomoLeftText() : meetingText();
+  const pm = state.pomodoro;
+  if (pm && pm.length) {
+    const left = Math.max(0, (pomoEnds - Date.now()) / 1000);
+    $("pomoMini").setAttribute("width", (16 * (1 - left / pm.length)).toFixed(2));
+  }
   if (view !== "pomo") return;
   const p = state.pomodoro;
   const left = p ? Math.max(0, Math.round((pomoEnds - Date.now()) / 1000)) : pomoLength()[0] * 60;
@@ -814,6 +846,12 @@ rects($("cBody"), BODY.flatMap((row, y) => [...row.matchAll(/#+/g)].map(r => [r.
 rects($("cLegsA"), LEGS_A.map(([x, y]) => [x, y, 1, 2]));
 rects($("cLegsB"), LEGS_B.map(([x, y]) => [x, y, 1, 2]));
 drawEyes("s-sleep");
+// Headphones: band over the head, cups on the sides (x 3..14 is the head).
+function cls(el, list) { list.forEach(([c, ...r]) => { const g = document.createElementNS(SVG_NS, "g"); g.setAttribute("class", c); rects(g, [r]); el.appendChild(g); }); }
+cls($("cPhones"), [["band", 4, -2, 10, 1], ["band", 3, -1, 1, 1], ["band", 14, -1, 1, 1],
+                   ["cup", 1, 0, 2, 4], ["cup", 15, 0, 2, 4], ["pad", 2, 1, 1, 2], ["pad", 15, 1, 1, 2]]);
+// Coffee mug beside the mascot (break).
+cls($("cMug"), [["mug", 18, 5, 3, 3], ["mug", 21, 6, 1, 1], ["coffee", 18, 5, 3, 1]]);
 
 // ---------- Claude Code's spinner: "✶ Accomplishing…" / "✻ Brewed for 42s" ----------
 const SPIN = ["·", "✢", "✳", "✶", "✻", "✽"];
