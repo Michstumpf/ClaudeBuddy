@@ -1,6 +1,7 @@
 // Claude Buddy firmware entry point: wires the link (serial for now; the
 // WebSocket to the hub comes next), the protocol and the UI.
 #include <Arduino.h>
+#include <WiFi.h>
 #include <ArduinoJson.h>
 
 #include <lvgl.h>
@@ -22,13 +23,16 @@
 //                                  save WiFi + hub to flash and restart
 //   {"type":"_sensors"}            print raw sensor readings every 200 ms (again: stop)
 //   {"type":"_shake"}              act as if the Buddy was shaken (asks the hub for a joke)
+//   {"type":"_stats"}              print Ajustes → Sistema's numbers every second (again: stop)
+static bool stats_log_ = false;
 static bool sensor_log_ = false;
 static void send_to_hub(const std::string& json);
 
 static bool local_command(const std::string& json) {
   if (json.find("\"_tap\"") == std::string::npos && json.find("\"_config\"") == std::string::npos &&
       json.find("\"_battery\"") == std::string::npos && json.find("\"_drag\"") == std::string::npos &&
-      json.find("\"_sensors\"") == std::string::npos && json.find("\"_shake\"") == std::string::npos)
+      json.find("\"_sensors\"") == std::string::npos && json.find("\"_shake\"") == std::string::npos &&
+      json.find("\"_stats\"") == std::string::npos)
     return false;
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
@@ -45,6 +49,10 @@ static bool local_command(const std::string& json) {
   if (doc["type"] == "_battery") {
     ui::set_battery(doc["percent"] | -1, doc["charging"] | false);
     Serial.printf("rx: battery %d\n", (int)(doc["percent"] | -1));
+    return true;
+  }
+  if (doc["type"] == "_stats") {
+    stats_log_ = !stats_log_;
     return true;
   }
   if (doc["type"] == "_shake") {
@@ -206,7 +214,37 @@ void setup() {
   Serial.println("buddy: ready");
 }
 
+// Ajustes → Sistema: how busy the loop is (time working vs. waiting in delay),
+// memory, flash and WiFi, sent to the screen once a second.
+static void report_stats(uint32_t busy_us) {
+  static uint32_t firmware = 0, firmware_max = 0;
+  if (!firmware) {  // reading the image size is slow: once
+    firmware = ESP.getSketchSize();
+    firmware_max = firmware + ESP.getFreeSketchSpace();
+  }
+  ui::Stats st;
+  st.cpu = busy_us / 10000;  // of 1 s
+  st.heap_free = ESP.getFreeHeap();
+  st.heap_total = ESP.getHeapSize();
+  st.psram_free = ESP.getFreePsram();
+  st.psram_total = ESP.getPsramSize();
+  st.firmware = firmware;
+  st.firmware_max = firmware_max;
+  if (WiFi.status() == WL_CONNECTED) {
+    st.rssi = WiFi.RSSI();
+    st.ip = WiFi.localIP().toString().c_str();
+  }
+  st.uptime_s = millis() / 1000;
+  ui::set_stats(st);
+  if (stats_log_)
+    Serial.printf("stats: cpu=%d%% heap=%lu/%luKB psram=%lu/%luKB rssi=%d\n", st.cpu, (unsigned long)(st.heap_free / 1024),
+                  (unsigned long)(st.heap_total / 1024), (unsigned long)(st.psram_free / 1024),
+                  (unsigned long)(st.psram_total / 1024), st.rssi);
+}
+
 void loop() {
+  const uint32_t loop_started = micros();
+  static uint32_t busy_us = 0, window_at = 0;
   net::serial_loop();
   net::hub_loop();
   hal::board::record_loop();
@@ -253,5 +291,11 @@ void loop() {
   }
   ui::loop();
   hal::lvgl_loop();
+  busy_us += micros() - loop_started;
+  if (millis() - window_at >= 1000) {
+    report_stats(busy_us);
+    busy_us = 0;
+    window_at = millis();
+  }
   delay(5);
 }

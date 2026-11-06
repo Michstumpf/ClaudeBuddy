@@ -25,6 +25,17 @@ void show_message(const char* line1, const char* line2);
 void set_dictation_handlers(void (*start)(), void (*stop)(const std::string& session_id));
 void set_listening(bool on);  // the face says "ouvindo… solte para enviar"
 const app::Settings& settings();  // the latest settings from the hub
+
+// The Buddy's own numbers, for Ajustes → Sistema (main sends them every second).
+struct Stats {
+  int cpu = 0;                          // % of each second the loop spent working (not idle)
+  uint32_t heap_free = 0, heap_total = 0, psram_free = 0, psram_total = 0;
+  uint32_t firmware = 0, firmware_max = 0;  // bytes of flash used by the firmware / its partition
+  int rssi = 0;                         // WiFi signal, dBm (0: not connected)
+  std::string ip;
+  uint32_t uptime_s = 0;
+};
+void set_stats(const Stats& stats);
 void loop();  // animations and timeouts; call often
 
 }  // namespace ui

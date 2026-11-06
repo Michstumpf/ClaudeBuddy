@@ -631,10 +631,13 @@ constexpr Page kPages[] = {
     {"Pomodoro", {7, -1}, "A duração vale a partir do próximo pomodoro."},
     {"Avisos e clima", {3, 6, -1}, nullptr},
     {"WiFi e hub", {8, -1}, "Configurar abre a rede Buddy-setup para trocar o WiFi ou o hub."},
+    {"Sistema", {-1}, nullptr},  // live numbers, see set_stats
 };
+constexpr int kSystemPage = 5;
 constexpr int kPageCount = sizeof(kPages) / sizeof(*kPages);
 lv_obj_t* pages_[kPageCount];
 lv_obj_t *page_title_, *page_count_;
+lv_obj_t* stats_values_ = nullptr;  // the right column of the Sistema page
 int page_ = 0;
 
 void show_page(int i) {
@@ -676,6 +679,17 @@ void build_settings(lv_obj_t* v) {
       pref_btn_[i] = button(row, "", kBtn, on_pref, reinterpret_cast<void*>(static_cast<uintptr_t>(i)));
       lv_obj_set_size(pref_btn_[i], 104, 26);
       lv_obj_set_style_pad_ver(pref_btn_[i], 0, 0);
+    }
+    if (p == kSystemPage) {
+      lv_obj_t* panel = text_box(pages_[p], 0, 0, 304, 140);
+      lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_ROW);
+      lv_obj_t* names = text(panel, &buddy_font_11, kMuted);
+      lv_label_set_text(names, "CPU\nMemória\nPSRAM\nTela (LVGL)\nFirmware\nWiFi\nIP\nLigado há");
+      lv_obj_set_width(names, 110);
+      stats_values_ = text(panel, &buddy_font_11, kFg);
+      lv_label_set_text(stats_values_, "…");
+      lv_obj_set_style_text_line_space(names, 3, 0);
+      lv_obj_set_style_text_line_space(stats_values_, 3, 0);
     }
     if (kPages[p].note) {
       lv_obj_t* note = text(pages_[p], &buddy_font_11, lv_color_hex(0x7d776f));
@@ -1106,6 +1120,23 @@ void set_battery(int percent, bool charging) {
 }
 
 const app::Settings& settings() { return state_.settings; }
+
+void set_stats(const Stats& st) {
+  if (view_ != kSettings || page_ != kSystemPage || !stats_values_) return;
+  lv_mem_monitor_t mem;
+  lv_mem_monitor(&mem);
+  char up[24];
+  const uint32_t h = st.uptime_s / 3600, m = st.uptime_s / 60 % 60;
+  if (h) snprintf(up, sizeof(up), "%luh %02lumin", (unsigned long)h, (unsigned long)m);
+  else snprintf(up, sizeof(up), "%lumin %02lus", (unsigned long)m, (unsigned long)(st.uptime_s % 60));
+  const char* signal = st.rssi == 0 ? "desconectado" : st.rssi > -60 ? "ótimo" : st.rssi > -70 ? "bom" : st.rssi > -80 ? "fraco" : "ruim";
+  lv_label_set_text_fmt(stats_values_,
+                        "%d%%\n%lu de %lu KB livres\n%lu de %lu KB livres\n%d%% usada\n%lu de %lu KB\n%d dBm (%s)\n%s\n%s",
+                        st.cpu, (unsigned long)(st.heap_free / 1024), (unsigned long)(st.heap_total / 1024),
+                        (unsigned long)(st.psram_free / 1024), (unsigned long)(st.psram_total / 1024),
+                        (int)mem.used_pct, (unsigned long)(st.firmware / 1024), (unsigned long)(st.firmware_max / 1024),
+                        st.rssi, signal, st.ip.empty() ? "—" : st.ip.c_str(), up);
+}
 
 void loop() {
   animate();
