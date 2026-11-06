@@ -57,6 +57,7 @@ static bool local_command(const std::string& json) {
   }
   if (doc["type"] == "_shake") {
     Serial.println("rx: shake");
+    ui::on_shake();
     send_to_hub(app::joke_now());
     return true;
   }
@@ -260,6 +261,7 @@ void loop() {
       // Shake: ask for a joke (at most every 30 s).
       if (s.shaken && millis() - joke_at > 30000) {
         joke_at = millis();
+        ui::on_shake();
         send_to_hub(app::joke_now());
       }
       // Screen down on the desk: night mode; picked up: awake.

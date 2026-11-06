@@ -13,6 +13,7 @@ void begin(Sender send);
 void apply(const app::State& state, bool connected);  // every state message
 void on_joke(const std::string& text);
 void on_notice(const std::string& text);  // hub notices: same bubble as jokes
+void on_shake();  // the Buddy was shaken: dizzy until the joke arrives (at most 3 s)
 void set_battery(int percent, bool charging);  // percent < 0: no battery, hide it
 // Link status: while not connected the face says why ("conectando ao WiFi…").
 void set_link(const char* status, bool connected);

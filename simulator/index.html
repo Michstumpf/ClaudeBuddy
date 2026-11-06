@@ -1083,7 +1083,9 @@ function startSpinner() {
 setInterval(() => {
   if (!$("face").classList.contains("s-idle")) return;
   setEyes(EYES.shut);
-  setTimeout(() => { if ($("face").classList.contains("s-idle")) drawEyes("s-idle"); }, 140);
+  setTimeout(() => {
+    if ($("face").classList.contains("s-idle")) setEyes(state.pomodoro && state.pomodoro.phase === "break" ? EYES.happy : EYES.open);
+  }, 140);
 }, 3500);
 
 // ---------- dev panel: fake Claude Code hook events ----------

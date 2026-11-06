@@ -64,7 +64,8 @@ lv_obj_t* weather_label_;  // "Temperatura em <cidade>"
 
 lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_left_, *bar_right_;
 lv_obj_t *spin_row_ = nullptr, *glyph_ = nullptr, *verb_ = nullptr;
-lv_obj_t *fx_alert_, *fx_zzz_, *fx_spark_[2];
+lv_obj_t *fx_alert_, *fx_zzz_[3], *fx_spark_[2], *fx_wave_[4];
+uint32_t mood_since_ = 0;  // millis() when the mood last changed (Done hops 3 times)
 std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_, big_eyes_;
 lv_obj_t* eyes_layer_ = nullptr;  // holds eyes_, moved sideways when the mascot looks around
 // Skin "eyes": only the eyes, big, on a body-colored screen (for a case shaped
@@ -77,6 +78,12 @@ bool eyes_skin_ = false;
 std::vector<lv_obj_t*> phones_, mug_;
 lv_obj_t *fx_notes_[2], *fx_steam_[2], *pomo_track_, *pomo_mini_;
 std::string face_phase_;  // pomodoro phase the face is drawn for
+// Shaken: dizzy (spiral eyes, wobbling, stars around the head) until the joke arrives.
+uint32_t dizzy_until_ = 0;
+lv_obj_t* fx_stars_[3];
+// Idle blink, like the simulator: eyes shut for 140 ms every 3.5 s.
+uint32_t blink_at_ = 0;
+bool blinking_ = false;
 
 app::Mood mood_ = app::Mood::Off;
 bool redraw_ = true;
@@ -173,6 +180,7 @@ const sprite::Eyes& eyes_for(app::Mood m) {
     case app::Mood::Done: return sprite::kEyesHappy;
     case app::Mood::Sleep: return sprite::kEyesSleep;
     case app::Mood::Off: return sprite::kEyesDead;
+    case app::Mood::Dizzy: return sprite::kEyesDizzy;
     default: return sprite::kEyesOpen;
   }
 }
@@ -240,10 +248,15 @@ void set_mood(const app::MoodView& v) {
     draw_eyes(mood_ == app::Mood::Idle && face_phase_ == "break" ? sprite::kEyesHappy : eyes_for(mood_));
     color_sprite(mood_ == app::Mood::Off ? kOff : kAccent);
     show_spinner(mood_ == app::Mood::Work);
-    lv_obj_set_y(sprite_, kSpriteY - kPad);
+
     // The effects belong to the whole mascot; the eyes skin shows state by color.
     const bool fx = !eyes_skin_;
-    if (fx && mood_ == app::Mood::Sleep) lv_obj_remove_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN);
+    mood_since_ = millis();
+    for (auto* z : fx_zzz_) show_if(z, fx && mood_ == app::Mood::Sleep);
+    for (auto* w : fx_wave_) {
+      show_if(w, fx && mood_ == app::Mood::Talk);
+      lv_obj_set_style_bg_color(w, listening_ ? kInfo : kAccent, 0);  // blue listening, body color talking
+    }
     if (fx && mood_ == app::Mood::Wait) lv_obj_remove_flag(fx_alert_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_alert_, LV_OBJ_FLAG_HIDDEN);
     for (auto* s : fx_spark_)
       if (fx && mood_ == app::Mood::Done) lv_obj_remove_flag(s, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s, LV_OBJ_FLAG_HIDDEN);
@@ -255,7 +268,7 @@ void set_mood(const app::MoodView& v) {
 void hide_bubble() {
   bubble_until_ = 0;
   lv_obj_add_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
-  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX - kPad);
+
 }
 
 void set_skin(bool eyes) {
@@ -285,6 +298,7 @@ void refresh() {
   if (!connected_ && !link_status_.empty()) v.label = link_status_;
   if (battery_ >= 0 && battery_ <= 10 && !charging_ && (v.mood == app::Mood::Idle || v.mood == app::Mood::Sleep))
     v.label = "bateria fraca, me carrega?";
+  if (dizzy_until_ && millis() < dizzy_until_ && connected_) v = {app::Mood::Dizzy, "uau, fiquei tonto…"};
   if (listening_) v = {app::Mood::Talk, "ouvindo… solte para enviar"};
   if (state_.pomodoro.phase != face_phase_) {
     face_phase_ = state_.pomodoro.phase;
@@ -308,33 +322,101 @@ void refresh() {
   else lv_label_set_text(bar_left_, "offline");
 }
 
+// The simulator's CSS animations, same periods and curves (simulator/index.html is
+// the reference): progress through a cycle is computed from the clock, so
+// timing does not depend on how often this runs.
+float cycle(uint32_t period_ms, uint32_t delay_ms = 0) {
+  return static_cast<float>((millis() + period_ms - delay_ms % period_ms) % period_ms) / period_ms;
+}
+float ease(float t) { return t * t * (3 - 2 * t); }  // ease-in-out
+// "hop": up 1.5 units at 40% of the cycle, eased both ways.
+int hop(float p) { return -static_cast<int>(15 * ease(p < 0.4f ? p / 0.4f : 1 - (p - 0.4f) / 0.6f)); }
+// "float": drifts 2 units right and 4 up, fading in over the first 20%, out after.
+void float_fx(lv_obj_t* o, float p) {
+  lv_obj_set_style_translate_x(o, static_cast<int>(20 * p), 0);
+  lv_obj_set_style_translate_y(o, -static_cast<int>(40 * p), 0);
+  lv_obj_set_style_opa(o, static_cast<lv_opa_t>(255 * (p < 0.2f ? p / 0.2f : 1 - (p - 0.2f) / 0.8f)), 0);
+}
+
 void animate() {
-  if (millis() - frame_at_ < 120) return;
+  if (millis() - frame_at_ < 50) return;  // ~20 fps
   frame_at_ = millis();
-  frame_++;
-  if (glyph_) {
+  static uint32_t spin_at = 0;
+  if (glyph_ && millis() - spin_at >= 120) {
+    spin_at = millis();
+    frame_++;
     lv_label_set_text(glyph_, kSpin[frame_ % 10]);
     if (millis() - verb_at_ > 8000) { verb_text_ = kVerbs[random(sizeof(kVerbs) / sizeof(*kVerbs))]; verb_at_ = millis(); }
     lv_label_set_text_fmt(verb_, "%s…", verb_text_);
   }
-  const bool step = (frame_ / 2) % 2;  // ~4 Hz
-  int dy = 0;
-  if (mood_ == app::Mood::Work) dy = step ? -kUnit / 2 : 0;
-  if (mood_ == app::Mood::Wait || mood_ == app::Mood::Talk) dy = step ? -kUnit : 0;
-  if (mood_ == app::Mood::Idle && face_phase_ == "focus") dy = (frame_ / 5) % 2 ? -3 : 0;  // nods to the music
-  for (int i = 0; i < 2; i++) {  // notes and steam drift up, then start over
-    const int rise = (frame_ + i * 10) % 20;
-    lv_obj_set_style_translate_y(fx_notes_[i], -rise, 0);
-    lv_obj_set_style_translate_y(fx_steam_[i], -rise / 2, 0);
+  const bool focus = mood_ == app::Mood::Idle && face_phase_ == "focus";
+  const bool dizzy = mood_ == app::Mood::Dizzy;
+  int dx = 0, dy = 0;
+  switch (mood_) {
+    case app::Mood::Sleep: dy = static_cast<int>(3 * (0.5f - 0.5f * cosf(6.2832f * cycle(3200)))); break;  // breathe
+    case app::Mood::Work: dy = cycle(500) < 0.5f ? 0 : -kUnit / 2; break;                                // bob
+    case app::Mood::Talk: dy = listening_ || cycle(350) < 0.5f ? 0 : -kUnit / 2; break;  // listening: still
+    case app::Mood::Wait: dy = hop(cycle(600)); break;
+    case app::Mood::Done: dy = millis() - mood_since_ < 2700 ? hop(cycle(900, mood_since_)) : 0; break;  // 3 hops
+    case app::Mood::Off: dy = kUnit; break;                                                               // slumped
+    case app::Mood::Dizzy: {  // wobble side to side
+      const float p = cycle(200);
+      dx = static_cast<int>(-7 + 14 * (p < 0.5f ? p * 2 : 2 - p * 2));
+      break;
+    }
+    default: break;
   }
-  lv_obj_set_y(sprite_, kSpriteY - kPad + dy);
-  const int look[] = {0, 0, -1, -1, 0, 0, 1, 1};  // like the simulator's "look" animation
-  const bool looking = mood_ == app::Mood::Work || (mood_ == app::Mood::Idle && face_phase_ == "focus");
-  const int glance = looking ? look[(frame_ / 3) % 8] : 0;
+  if (focus) dx = static_cast<int>(3 * sinf(6.2832f * cycle(1200)));  // grooves to the music
+  if (bubble_until_ && !eyes_skin_) dx -= 34, dy += 14;             // steps aside for the bubble
+  lv_obj_set_pos(sprite_, kSpriteX - kPad + dx, kSpriteY - kPad + dy);
+  // Eyes skin: the big eyes bob while talking.
+  lv_obj_set_y(bigeyes_, kBigY + (mood_ == app::Mood::Talk && cycle(350) >= 0.5f ? -kBigUnit / 2 : 0));
+
+  // Legs walk while working (A and B alternate every half cycle).
+  const bool half = cycle(500) >= 0.5f;
+  for (auto* l : legs_a_) lv_obj_set_y(l, kPad + 8 * kUnit - (mood_ == app::Mood::Work && half ? kUnit : 0));
+  for (auto* l : legs_b_) lv_obj_set_y(l, kPad + 8 * kUnit - (mood_ == app::Mood::Work && !half ? kUnit : 0));
+  // "look": 0 until 25% of 2.4 s, left until 60%, right until the end.
+  const float lp = cycle(2400);
+  const int glance = mood_ == app::Mood::Work ? (lp < 0.25f ? 0 : lp < 0.6f ? -1 : 1) : 0;
   lv_obj_set_x(bigeyes_, kBigX + glance * kBigUnit);
   lv_obj_set_x(eyes_layer_, kPad + glance * kUnit);
-  for (auto* l : legs_a_) lv_obj_set_y(l, kPad + 8 * kUnit - (mood_ == app::Mood::Work && step ? kUnit : 0));
-  for (auto* l : legs_b_) lv_obj_set_y(l, kPad + 8 * kUnit - (mood_ == app::Mood::Work && !step ? kUnit : 0));
+
+  for (int i = 0; i < 3; i++) float_fx(fx_zzz_[i], cycle(3000, i * 1000));        // z z Z, 1 s apart
+  for (int i = 0; i < 2; i++) float_fx(fx_notes_[i], cycle(2400, i * 1200));      // ♪ ♫
+  for (int i = 0; i < 2; i++) float_fx(fx_steam_[i], cycle(2000, i * 1000));      // coffee steam
+  lv_obj_set_style_opa(fx_alert_, cycle(600) < 0.5f ? LV_OPA_COVER : LV_OPA_0, 0);  // "!" flashes
+  for (int i = 0; i < 2; i++)                                                       // sparks twinkle, 0.4 s apart
+    lv_obj_set_style_opa(fx_spark_[i], cycle(800, i * 400) < 0.5f ? LV_OPA_COVER : LV_OPA_0, 0);
+  // Sound bars beside the mascot: listening (slow) or talking (fast), alternating pairs.
+  const uint32_t wave_ms = listening_ ? 1400 : 500;
+  for (int i = 0; i < 4; i++) {
+    const float p = cycle(wave_ms, i % 2 ? wave_ms / 4 : 0);
+    const float scale = 0.4f + 0.9f * ease(p < 0.5f ? p * 2 : 2 - p * 2);
+    const int base = i == 1 || i == 2 ? 40 : 30;
+    const int h = static_cast<int>(base * scale);
+    lv_obj_set_height(fx_wave_[i], h);
+    lv_obj_set_y(fx_wave_[i], kPad + 5 * kUnit - h / 2);
+  }
+  // Dizzy: three stars circling the head, a full turn per second.
+  for (int i = 0; i < 3; i++) {
+    show_if(fx_stars_[i], dizzy && !eyes_skin_);
+    if (!dizzy) continue;
+    const float a = 6.2832f * cycle(1000, i * 333);
+    lv_obj_set_pos(fx_stars_[i], kSpriteX + 84 + static_cast<int>(70 * cosf(a)), kSpriteY + 2 + static_cast<int>(70 * sinf(a)));
+  }
+  if (dizzy_until_ && millis() >= dizzy_until_) {
+    dizzy_until_ = 0;
+    refresh();
+  }
+  // Blink when idle: shut for a moment, then the idle eyes again (happy on a pomodoro break).
+  if (mood_ == app::Mood::Idle && millis() - blink_at_ > (blinking_ ? 140u : 3500u)) {
+    blink_at_ = millis();
+    blinking_ = !blinking_;
+    draw_eyes(blinking_ ? sprite::kEyesShut : face_phase_ == "break" ? sprite::kEyesHappy : sprite::kEyesOpen);
+  } else if (mood_ != app::Mood::Idle) {
+    blinking_ = false;
+  }
   if (bubble_until_ && millis() > bubble_until_) hide_bubble();
 }
 
@@ -951,6 +1033,11 @@ void begin(Sender send) {
   fx_notes_[1] = text(face_, &buddy_font_13, lv_color_hex(0xe8875f));
   lv_label_set_text(fx_notes_[1], "♫");
   lv_obj_set_pos(fx_notes_[1], kSpriteX - 22, kSpriteY - 12);
+  for (auto*& star : fx_stars_) {
+    star = text(face_, &buddy_font_13, kWarn);
+    lv_label_set_text(star, "✦");
+    lv_obj_add_flag(star, LV_OBJ_FLAG_HIDDEN);
+  }
   pomo_track_ = box(face_, kSpriteX + 10, kSpriteY + 108, 160, 5, kBar);
   pomo_mini_ = box(pomo_track_, 0, 0, 0, 5, lv_color_hex(0xe8875f));
   for (auto* o : phones_) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
@@ -969,9 +1056,14 @@ void begin(Sender send) {
   fx_alert_ = text(face_, &buddy_font_13, kWarn);
   lv_label_set_text(fx_alert_, "!");
   lv_obj_set_pos(fx_alert_, kSpriteX + 85, kSpriteY - 34);
-  fx_zzz_ = text(face_, &buddy_font_13, lv_color_hex(0x8a857f));
-  lv_label_set_text(fx_zzz_, "z Z");
-  lv_obj_set_pos(fx_zzz_, kSpriteX + 150, kSpriteY - 30);
+  const char* zs[] = {"z", "z", "Z"};
+  for (int i = 0; i < 3; i++) {  // like the simulator: (15,-0.5), (16,-1.5), (17,-2.5) in sprite units
+    fx_zzz_[i] = text(face_, &buddy_font_13, lv_color_hex(0x8a857f));
+    lv_label_set_text(fx_zzz_[i], zs[i]);
+    lv_obj_set_pos(fx_zzz_[i], kSpriteX + 150 + i * 10, kSpriteY - 18 - i * 10);
+  }
+  const int wave_x[] = {-24, -13, 187, 198};  // sound bars: x -2.4, -1.3, 18.7, 19.8 units
+  for (int i = 0; i < 4; i++) fx_wave_[i] = box(sprite_, kPad + wave_x[i], kPad + 35, 6, 30, kAccent);
   fx_spark_[0] = text(face_, &buddy_font_13, kOk);
   fx_spark_[1] = text(face_, &buddy_font_13, kOk);
   lv_label_set_text(fx_spark_[0], "✦");
@@ -1022,7 +1114,9 @@ void begin(Sender send) {
   for (auto* o : {batt_shell_, cap}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   lv_obj_set_user_data(batt_shell_, cap);
 
-  for (auto* o : {fx_alert_, fx_zzz_, fx_spark_[0], fx_spark_[1]}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  for (auto* o : {fx_alert_, fx_spark_[0], fx_spark_[1]}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  for (auto* o : fx_zzz_) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  for (auto* o : fx_wave_) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
   refresh();
   show(kFace);
 }
@@ -1044,11 +1138,17 @@ void apply(const app::State& state, bool connected) {
 
 void on_notice(const std::string& t) { on_joke(t); }
 
+void on_shake() {
+  dizzy_until_ = millis() + 3000;  // or until the joke arrives
+  refresh();
+}
+
 void on_joke(const std::string& t) {
+  if (dizzy_until_ && dizzy_until_ > millis() + 400) dizzy_until_ = millis() + 400;
   if (view_ != kApprove) show(kFace);
   lv_label_set_text(bubble_text_, t.c_str());
   lv_obj_remove_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
-  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX - kPad - 34);  // step aside for the bubble
+
   bubble_until_ = millis() + 15000;
 }
 

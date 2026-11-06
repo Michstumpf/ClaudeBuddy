@@ -6,7 +6,7 @@
 
 namespace app {
 
-enum class Mood : uint8_t { Off, Talk, Sleep, Wait, Done, Work, Idle };
+enum class Mood : uint8_t { Off, Talk, Sleep, Wait, Done, Work, Idle, Dizzy };  // Dizzy: set by the UI (shaken)
 
 struct MoodView {
   Mood mood;

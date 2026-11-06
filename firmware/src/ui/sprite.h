@@ -32,7 +32,11 @@ constexpr Rect kHappy[] = {{4, 3, 1, 1}, {5, 2, 1, 1}, {6, 3, 1, 1}, {11, 3, 1, 
 constexpr Rect kDead[] = {{4, 1, 1, 1}, {6, 1, 1, 1}, {5, 2, 1, 1}, {4, 3, 1, 1}, {6, 3, 1, 1},
                           {11, 1, 1, 1}, {13, 1, 1, 1}, {12, 2, 1, 1}, {11, 3, 1, 1}, {13, 3, 1, 1}};
 
+// Spirals, like "@": shaken.
+constexpr Rect kDizzy[] = {{4, 1, 3, 1}, {6, 2, 1, 1}, {4, 3, 2, 1}, {4, 2, 1, 1},
+                           {11, 1, 3, 1}, {13, 2, 1, 1}, {11, 3, 2, 1}, {11, 2, 1, 1}};
+
 constexpr Eyes kEyesOpen{kOpen, 2}, kEyesWide{kWide, 2}, kEyesShut{kShut, 2},
-    kEyesSleep{kSleep, 2}, kEyesHappy{kHappy, 6}, kEyesDead{kDead, 10};
+    kEyesSleep{kSleep, 2}, kEyesHappy{kHappy, 6}, kEyesDead{kDead, 10}, kEyesDizzy{kDizzy, 8};
 
 }  // namespace sprite
