@@ -115,6 +115,35 @@
   .pomo-break .fx-steam rect { animation: float 2s ease-in infinite; }
   .pomo-break .fx-steam rect:nth-child(2) { animation-delay: 1s; }
   .skin-eyes .fx-notes, .skin-eyes .fx-steam, .skin-eyes .fx-pomo { display: none; }
+  /* Microphone: a floating button on the face, a recording screen with a live wave,
+     then the transcribed text and where to send it. */
+  .micfab { position: absolute; top: 4px; left: 6px; width: 40px; height: 34px; border: 0; border-radius: 10px;
+            background: #3c6fc4; color: #fff; font-size: 17px; cursor: pointer; display: none; z-index: 2; }
+  .mic-on .micfab { display: block; } .mic-on .chip { left: auto; right: 8px; }
+  .skin-eyes .micfab { background: #1b1d22; }
+  #v-rec .pad, #v-pick .pad { padding: 6px 8px 8px; gap: 6px; }
+  .rec-head { display: flex; align-items: center; gap: 6px; font: bold 13px ui-monospace, monospace; }
+  .rec-head #recTime { margin-left: auto; color: #c9c4bc; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #e0574f; animation: flash 1s steps(1) infinite; }
+  #recWave { width: 100%; height: 96px; background: #181a1f; border-radius: 6px; }
+  .rec-hint { text-align: center; font: 10px ui-monospace, monospace; color: #7d776f; }
+  #v-rec .btns, #v-pick .btns { margin-top: auto; } #v-rec .btns .btn { padding: 11px 4px; font-size: 12px; }
+  #pickText { background: #181a1f; border-radius: 6px; padding: 5px 7px; font: 11px ui-monospace, monospace; max-height: 52px; overflow-y: auto; }
+  #pickText.wait { color: #7d776f; }
+  #pickList { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 4px; }
+  .pick { border: 0; border-radius: 6px; background: #3a3f48; color: #fff; text-align: left; padding: 7px 8px;
+          font: bold 11px ui-monospace, monospace; cursor: pointer; display: flex; gap: 6px; }
+  .pick small { margin-left: auto; font-weight: normal; color: #c9c4bc; }
+  .pick.last { outline: 2px solid #6aa8ff; } .pick.cmd { background: #3c6fc4; }
+  .pick:disabled { opacity: .35; cursor: default; }
+  /* Shaken: dizzy, wobbling, with stars around the head, until the joke arrives. */
+  .s-dizzy .sprite { animation: dizzy .2s linear infinite; transform-box: fill-box; transform-origin: center bottom; }
+  .s-dizzy .fx-stars { opacity: 1; }
+  .clawd .fx-stars text { font: 2.6px ui-monospace, monospace; fill: #e8b04a; }
+  .s-dizzy .fx-stars text { animation: orbit 1s linear infinite; transform-box: view-box; transform-origin: 9px 1px; }
+  .s-dizzy .fx-stars text:nth-child(2) { animation-delay: -.33s; } .s-dizzy .fx-stars text:nth-child(3) { animation-delay: -.66s; }
+  @keyframes dizzy { 0%, 100% { transform: translateX(-0.7px) rotate(-5deg); } 50% { transform: translateX(0.7px) rotate(5deg); } }
+  @keyframes orbit { from { transform: rotate(0) translateX(7px) rotate(0); } to { transform: rotate(360deg) translateX(7px) rotate(-360deg); } }
   @keyframes groove { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
   @keyframes bob { 50% { transform: translateY(-0.5px); } }
   @keyframes step { 50% { transform: translateY(-1px); } }
@@ -240,6 +269,7 @@
               <g class="fx fx-phones" id="cPhones"></g>
               <g class="fx fx-mug" id="cMug"></g>
             </g>
+            <g class="fx fx-stars"><text x="9" y="1">✦</text><text x="9" y="1">✦</text><text x="9" y="1">✦</text></g>
             <g class="fx fx-notes"><text x="16.5" y="-0.5">♪</text><text x="-1.5" y="0">♫</text></g>
             <g class="fx fx-steam"><rect x="18.6" y="3" width="0.4" height="1"/><rect x="19.6" y="2.6" width="0.4" height="1"/></g>
             <g class="fx fx-pomo"><rect class="track" x="1" y="10.6" width="16" height="0.5"/><rect class="fill" id="pomoMini" x="1" y="10.6" width="0" height="0.5"/></g>
@@ -252,6 +282,7 @@
             <g class="fx fx-wave"><rect x="-2.4" y="3.5" width="0.6" height="3"/><rect x="-1.3" y="3" width="0.6" height="4"/><rect x="18.7" y="3" width="0.6" height="4"/><rect x="19.8" y="3.5" width="0.6" height="3"/></g>
           </svg>
           <svg class="bigeyes" viewBox="3 0 12 5" aria-hidden="true"><g class="eyes" id="cEyesBig"></g></svg>
+          <button class="micfab" id="micBtn" aria-label="Gravar">🎤</button>
           <div class="label" id="faceLabel">conectando…</div>
           <div class="chip" id="wx"></div>
           <div class="bubble" id="bubble"></div>
@@ -284,6 +315,27 @@
         </div>
       </div>
 
+      <div class="view" id="v-rec">
+        <div class="pad">
+          <div class="rec-head"><span class="rec-dot"></span>Gravando<span id="recTime">0:00</span></div>
+          <canvas id="recWave" width="600" height="192"></canvas>
+          <div class="rec-hint" id="recHint">fale; toque em Enviar quando terminar</div>
+          <div class="btns">
+            <button class="btn bad" id="recCancel">✕ Cancelar</button>
+            <button class="btn ok" id="recSend">Enviar ▶</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="v-pick">
+        <div class="pad">
+          <div class="title">Para onde?</div>
+          <div id="pickText" class="wait">transcrevendo…</div>
+          <div id="pickList"></div>
+          <div class="btns"><button class="btn" id="pickCancel">✕ Cancelar</button></div>
+        </div>
+      </div>
+
       <div class="view" id="v-list">
         <div class="list-head"><button class="btn" data-go="menu">◀ Menu</button><span id="listCount" style="flex:1"></span></div>
         <div class="list" id="list"></div>
@@ -302,6 +354,7 @@
             <div class="opt"><span>Brilho</span><button class="btn" data-cycle="brightness"></button></div>
             <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
             <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
+            <div class="opt"><span>Microfone (botão 🎤)</span><button class="btn" data-pref="mic"></button></div>
           </div>
           <div class="optlist" data-page="Pomodoro">
             <div class="opt"><span>Foco + pausa</span><button class="btn" data-cycle="pomodoro"></button></div>
@@ -392,6 +445,11 @@
     <button id="fakeBattSend" style="margin-top:6px">Enviar <span id="fakeBattVal">80</span>%</button>
   </section>
   <section>
+    <h2>Chacoalhar</h2>
+    <p class="result">Como chacoalhar o Buddy de verdade: ele fica tonto e pede uma piada.</p>
+    <button id="fakeShake">Chacoalhar</button>
+  </section>
+  <section>
     <h2>Cidade do clima</h2>
     <input id="city" placeholder="Porto Alegre, ou São José, SC">
     <button id="citySave" style="margin-top:6px">Salvar cidade</button>
@@ -429,6 +487,7 @@ let token = params.get("token") || (() => { try { return localStorage.getItem("b
 $("token").value = token;
 
 let ws = null, state = { sessions: [], pending: [] }, view = "face", current = null, connected = false;
+let dizzyUntil = 0;  // shaken: the face is dizzy until then
 let lastEvent = null, lastEventAt = 0;
 
 function log(msg) { const el = $("log"); el.textContent = `${new Date().toLocaleTimeString()} ${msg}\n` + el.textContent; }
@@ -457,7 +516,7 @@ function onMessage(msg) {
       if (!msg.night && (msg.event.kind === "attention" || msg.event.kind === "approval")) beep([660, 660]);
       if (msg.event.kind === "morning") beep([523, 659, 784]);
     }
-    if (state.pending.length && view !== "dictate") show("approve");
+    if (state.pending.length && !["dictate", "rec", "pick"].includes(view)) show("approve");
     else if (!state.pending.length && view === "approve") show("face");
     render();
   } else if (msg.type === "speech") {
@@ -470,6 +529,11 @@ function onMessage(msg) {
   } else if (msg.type === "settings_result") {
     $("cityResult").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
     log(`configuração: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
+  } else if ((msg.type === "dictate_result" || msg.type === "command_result") && view === "pick") {
+    const ok = msg.type === "command_result" ? msg.handled : msg.ok;
+    $("pickText").textContent = `${ok ? "✓" : "✕"} ${msg.detail}`;
+    log(`${msg.type === "command_result" ? "comando" : "ditado"}: ${ok ? "ok" : "falhou"} (${msg.detail})`);
+    setTimeout(() => { if (view === "pick") show("face"); }, ok ? 1500 : 3000);
   } else if (msg.type === "dictate_result") {
     log(`ditado → ${msg.session || "?"}: ${msg.ok ? "ok" : "falhou"} (${msg.detail})`);
     $("dText").textContent = msg.ok ? `✓ ${msg.detail}` : `✕ ${msg.detail}`;
@@ -485,6 +549,7 @@ function show(v) { view = v; document.querySelectorAll(".view").forEach(el => el
 function mood() {
   if (!connected) return ["s-off", "sem conexão com o hub"];
   if (listening) return ["s-listen", "ouvindo…"];
+  if (dizzyUntil > Date.now()) return ["s-dizzy", "uau, fiquei tonto…"];
   if (talking) return ["s-talk", `🔊 ${talking}`];
   if (state.night && !state.pending.length) return ["s-sleep", "boa noite 🌙"];
   const ss = state.sessions.filter(s => s.status !== "offline");
@@ -504,6 +569,7 @@ function render() {
     const joking = $("face").classList.contains("joking");
     $("face").className = "face " + m + (joking ? " joking" : ""); drawEyes(m);
   }
+  $("face").classList.toggle("mic-on", !!(state.settings && state.settings.mic));
   const phase = state.pomodoro && state.pomodoro.phase;
   $("face").classList.toggle("pomo-focus", phase === "focus");
   $("face").classList.toggle("pomo-break", phase === "break");
@@ -744,10 +810,125 @@ $("prefSkin").onclick = (e) => {
   send({ type: "settings", values: { skin: next } });
 };
 
+// ---------- microphone: record → read the text → pick where it goes ----------
+const REC_MAX_MS = 60000;
+let rec = null;  // { stream, recorder, chunks, ctx, analyser, started, raf, cancelled }
+async function startRec() {
+  show("rec");
+  $("recHint").textContent = "fale; toque em Enviar quando terminar";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new AudioContext(), analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const recorder = new MediaRecorder(stream);
+    rec = { stream, recorder, chunks: [], ctx, analyser, started: Date.now(), levels: [] };
+    recorder.ondataavailable = (e) => rec && rec.chunks.push(e.data);
+    recorder.start();
+    drawWave();
+  } catch (err) {
+    $("recHint").textContent = "sem acesso ao microfone (o navegador bloqueou?)";
+    rec = null;
+  }
+}
+function drawWave() {
+  if (!rec) return;
+  const { analyser } = rec, buf = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buf);
+  let sum = 0;
+  for (const v of buf) sum += (v - 128) ** 2;
+  rec.levels.push(Math.min(1, Math.sqrt(sum / buf.length) / 40));
+  const c = $("recWave"), g = c.getContext("2d"), n = 60, w = c.width / n;
+  g.clearRect(0, 0, c.width, c.height);
+  g.fillStyle = "#e8875f";
+  rec.levels.slice(-n).forEach((lv, i) => {
+    const h = Math.max(4, lv * c.height * 0.9);
+    g.fillRect(i * w + 2, (c.height - h) / 2, w - 4, h);
+  });
+  const secs = Math.floor((Date.now() - rec.started) / 1000);
+  $("recTime").textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  if (Date.now() - rec.started > REC_MAX_MS) { finishRec(true); return; }
+  rec.raf = setTimeout(drawWave, 80);
+}
+function finishRec(send) {
+  if (!rec) { show("face"); return; }
+  const r = rec;
+  rec = null;
+  clearTimeout(r.raf);
+  r.recorder.onstop = () => {
+    r.stream.getTracks().forEach(t => t.stop());
+    r.ctx.close();
+    if (send) transcribe(new Blob(r.chunks, { type: r.recorder.mimeType }));
+  };
+  r.recorder.stop();
+  if (!send) show("face");
+}
+let pickedText = "";
+async function transcribe(blob) {
+  pickedText = "";
+  fillPick();
+  show("pick");
+  try {
+    const r = await fetch("/api/transcribe?commands=0", { method: "POST", body: blob,
+      headers: { "Content-Type": blob.type || "audio/webm", "X-Buddy-Token": token } });
+    const data = await r.json();
+    pickedText = (data.text || "").trim();
+    $("pickText").textContent = pickedText || "não ouvi nada";
+    $("pickText").classList.toggle("wait", !pickedText);
+    if (!pickedText) setTimeout(() => { if (view === "pick") show("face"); }, 2000);
+  } catch (err) {
+    $("pickText").textContent = "não consegui transcrever";
+  }
+  fillPick();
+}
+function lastSession() { try { return localStorage.getItem("buddyLastDictation") || ""; } catch { return ""; } }
+function fillPick() {
+  if (!pickedText) { $("pickText").textContent = "transcrevendo…"; $("pickText").classList.add("wait"); }
+  const list = $("pickList"), last = lastSession();
+  list.replaceChildren();
+  const add = (label, sub, cls, enabled, onPick) => {
+    const b = document.createElement("button");
+    b.className = "pick " + cls; b.disabled = !enabled || !pickedText;
+    b.innerHTML = `<span></span><small></small>`;
+    b.firstChild.textContent = label; b.lastChild.textContent = sub;
+    b.onclick = (e) => { e.stopPropagation(); onPick(); };
+    list.appendChild(b);
+  };
+  add("🗣 Comando de voz", "pomodoro, boa noite…", "cmd", true, () => {
+    $("pickText").textContent = "enviando comando…";
+    send({ type: "command", text: pickedText });
+  });
+  // The last session used first; sessions without tmux can't be typed into.
+  const sessions = state.sessions.filter(x => x.status !== "offline")
+    .sort((a, b) => (b.id === last) - (a.id === last));
+  for (const x of sessions) {
+    const st = { working: "trabalhando", waiting: "esperando", done: "terminou" }[x.status] || "tranquila";
+    add(x.name, x.tmux_pane ? st : "sem tmux", x.id === last ? "last" : "", !!x.tmux_pane, () => {
+      try { localStorage.setItem("buddyLastDictation", x.id); } catch {}
+      $("pickText").textContent = `enviando para ${x.name}…`;
+      send({ type: "dictate", session_id: x.id, text: pickedText });
+    });
+  }
+}
+$("micBtn").onclick = (e) => { e.stopPropagation(); send({ type: "touch" }); startRec(); };
+$("recCancel").onclick = (e) => { e.stopPropagation(); finishRec(false); };
+$("recSend").onclick = (e) => { e.stopPropagation(); finishRec(true); };
+$("pickCancel").onclick = (e) => { e.stopPropagation(); show("face"); };
+
+// ---------- shaken: dizzy until the joke arrives (at most 3 s) ----------
+function shake() {
+  dizzyUntil = Date.now() + 3000;
+  render();
+  send({ type: "joke_now" });
+  setTimeout(render, 3050);
+}
+$("fakeShake").onclick = shake;
+
 let bubbleTimer = null;
 function showJoke(msg) {
   log(`😄 ${msg.text}`);
-  if (view !== "approve" && view !== "dictate") show("face");
+  if (dizzyUntil > Date.now()) dizzyUntil = Math.min(dizzyUntil, Date.now() + 400);
+  if (view !== "approve" && view !== "dictate" && view !== "rec" && view !== "pick") show("face");
   $("bubble").textContent = msg.text; $("bubble").classList.add("on"); $("face").classList.add("joking");
   clearTimeout(bubbleTimer);
   bubbleTimer = setTimeout(() => { $("bubble").classList.remove("on"); $("face").classList.remove("joking"); }, 15000);
@@ -826,10 +1007,12 @@ const EYES = {
   shut:  [[5, 3, 1, 1], [12, 3, 1, 1]],
   sleep: [[4, 3, 2, 1], [11, 3, 2, 1]],
   happy: [[4, 3, 1, 1], [5, 2, 1, 1], [6, 3, 1, 1], [11, 3, 1, 1], [12, 2, 1, 1], [13, 3, 1, 1]],
+  // Spirals: a ring with a gap, like "@".
+  dizzy: [[4, 1, 3, 1], [6, 2, 1, 1], [4, 3, 2, 1], [4, 2, 1, 1], [11, 1, 3, 1], [13, 2, 1, 1], [11, 3, 2, 1], [11, 2, 1, 1]],
   dead:  [[4, 1, 1, 1], [6, 1, 1, 1], [5, 2, 1, 1], [4, 3, 1, 1], [6, 3, 1, 1],
           [11, 1, 1, 1], [13, 1, 1, 1], [12, 2, 1, 1], [11, 3, 1, 1], [13, 3, 1, 1]],
 };
-const EYES_FOR = { "s-talk": "open", "s-idle": "open", "s-work": "open", "s-listen": "open", "s-wait": "wide",
+const EYES_FOR = { "s-dizzy": "dizzy", "s-talk": "open", "s-idle": "open", "s-work": "open", "s-listen": "open", "s-wait": "wide",
                    "s-done": "happy", "s-sleep": "sleep", "s-off": "dead" };
 const SVG_NS = "http://www.w3.org/2000/svg";
 function rects(el, list) {

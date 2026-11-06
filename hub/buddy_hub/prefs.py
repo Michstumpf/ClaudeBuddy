@@ -15,6 +15,7 @@ DEFAULTS = {
     "weather": True,           # outside temperature on the face screen
     "skin": "classic",         # classic: the whole mascot | eyes: only its eyes, for a mascot-shaped case
     "battery": True,           # battery indicator in the status bar (boards with a battery)
+    "mic": False,              # the Buddy's 🎤 button: record, read the text, send it to a session
     "volume": "mid",           # speaker: off | low | mid | high (off: bubbles only, no sound)
     "pomodoro": "25+5",        # focus + break minutes, one of POMODORO_LENGTHS
     "brightness": "auto",      # screen: auto (light sensor) | low | mid | high; night and low battery still dim it

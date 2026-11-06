@@ -128,3 +128,23 @@ def test_voice_approval(monkeypatch):
         t.join(timeout=5)
     assert r["handled"] is True and r["detail"].startswith("aprovado")
     assert result["r"]["decision"] == "allow"
+
+
+def test_transcribe_only_leaves_commands_to_the_buddy(monkeypatch):
+    # The mic screen shows the text first; the user then picks a session or "Comando de voz".
+    app = hub_with(monkeypatch, "Manda para a HIPAA: roda os testes.")
+    sent = []
+    with TestClient(app) as c:
+        monkeypatch.setattr(app.state.sender, "send", lambda pane, text: (sent.append((pane, text)), (True, "ok"))[1])
+        hook(c, "SessionStart", "b", "HIPAA Compliance")
+        r = c.post("/api/transcribe?commands=0", content=b"RIFF", headers=H).json()
+        assert r["text"] == "Manda para a HIPAA: roda os testes." and "handled" not in r and sent == []
+        with c.websocket_connect(f"/ws?token={TOKEN}") as ws:
+            ws.receive_json()
+            ws.send_json({"type": "command", "text": r["text"]})
+            result = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "command_result")
+            ws.send_json({"type": "command", "text": "qual é a capital da França"})
+            unknown = next(m for m in (ws.receive_json() for _ in range(5)) if m["type"] == "command_result")
+    assert result["handled"] is True and "HIPAA" in result["detail"]
+    assert sent == [("%7", "roda os testes.")]
+    assert unknown == {"type": "command_result", "handled": False, "detail": "não entendi esse comando"}

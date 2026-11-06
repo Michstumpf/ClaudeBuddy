@@ -552,6 +552,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                  result["audio_seconds"], result["took_seconds"], result.get("backend"))
         text = result.get("text", "")
         hub.note_voice_text(text)
+        # ?commands=0: only transcribe. The Buddy's mic screen shows the text first
+        # and sends it to a session (dictate) or as a command (command) itself.
+        if request.query_params.get("commands") == "0":
+            return result
         handled = await apply_voice_command(text)
         detail = handled or await handle_intent(text)
         if detail:  # the hub took care of it: nothing to type in the focused window
@@ -628,6 +632,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 elif kind == "dictate":
                     result = dictate(msg.get("session_id"), msg.get("text", ""))
                     await ws.send_text(json.dumps({"type": "dictate_result", **result}))
+                elif kind == "command":  # a transcribed phrase the user chose to run as a voice command
+                    text = str(msg.get("text", ""))
+                    detail = await apply_voice_command(text) or await handle_intent(text)
+                    await ws.send_text(json.dumps({"type": "command_result", "handled": bool(detail),
+                                                   "detail": detail or "não entendi esse comando"}))
                 elif kind == "ping":
                     await ws.send_text(json.dumps({"type": "pong"}))
         except (WebSocketDisconnect, json.JSONDecodeError):
