@@ -15,6 +15,8 @@ DEFAULTS = {
     "weather": True,           # outside temperature on the face screen
     "skin": "classic",         # classic: the whole mascot | eyes: only its eyes, for a mascot-shaped case
     "battery": True,           # battery indicator in the status bar (boards with a battery)
+    "volume": "mid",           # speaker: off | low | mid | high (off: bubbles only, no sound)
+    "brightness": "auto",      # screen: auto (light sensor) | low | mid | high; night and low battery still dim it
     "long_task_min": 15,       # notice when a session works this long (0 = off)
     "daily_summary": True,     # say the day's summary at "boa noite"
     "calendar": True,          # meeting reminders and focus mode during meetings (needs the iCal URL)
@@ -29,6 +31,8 @@ DEFAULTS = {
 CITY_MAX_CHARS = 60
 JOKE_INTERVALS = (15, 30, 45, 60, 120)
 SKINS = ("classic", "eyes")
+VOLUMES = ("off", "low", "mid", "high")
+BRIGHTNESS = ("auto", "low", "mid", "high")
 LONG_TASK_OPTIONS = (0, 10, 15, 30, 60)
 
 
@@ -66,8 +70,8 @@ class Prefs:
             if key == "city_geo":
                 if value is not None and not (isinstance(value, dict) and {"name", "lat", "lon"} <= value.keys()):
                     continue
-            elif key == "skin":
-                if value not in SKINS:
+            elif key in ("skin", "volume", "brightness"):
+                if value not in {"skin": SKINS, "volume": VOLUMES, "brightness": BRIGHTNESS}[key]:
                     continue
             elif key == "city":
                 value = " ".join(str(value or "").split())[:CITY_MAX_CHARS]

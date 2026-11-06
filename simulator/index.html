@@ -147,6 +147,13 @@
   #v-settings .opt { padding: 2px 6px; }
   #v-settings .opt .btn { padding: 4px 6px; }
   #v-settings .btns .btn { padding: 7px 4px; }
+  #v-settings .optlist:not(.on) { display: none; }
+  #v-settings .opt { min-height: 30px; }
+  #v-settings .opt > span { line-height: 30px; }
+  .pager { align-items: center; margin-top: auto; }
+  .pager .btn { flex: none; min-width: 64px; } .pager #pagePrev, .pager #pageNext { min-width: 56px; font-size: 16px; padding: 3px 4px; }
+  .pager #pagePrev { margin-left: auto; }
+  #pageCount { min-width: 40px; text-align: center; font: bold 12px ui-monospace, monospace; color: #c9c4bc; }
   .list { position: absolute; inset: 30px 0 22px 0; overflow-y: auto; padding: 0 4px 4px; }
   .list-head { position: absolute; top: 4px; left: 4px; right: 4px; height: 22px; display: flex; gap: 6px; align-items: center; }
   .list-head .btn { flex: none; padding: 4px 10px; }
@@ -261,20 +268,27 @@
 
       <div class="view" id="v-settings">
         <div class="pad">
-          <div class="title">⚙ Configurações</div>
-          <div class="optlist">
-          <div class="opt"><span>Piadas de vez em quando</span><button class="btn" data-pref="jokes"></button></div>
-          <div class="opt"><span>Falar as piadas</span><button class="btn" data-pref="joke_voice"></button></div>
-          <div class="opt"><span>Intervalo entre piadas</span><button class="btn" id="prefInterval"></button></div>
-          <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
-          <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
-          <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
-          <div class="opt"><span>Aviso de tarefa longa</span><button class="btn" id="prefLong"></button></div>
-          <div class="opt"><span>Pomodoro (25 + 5 min)</span><button class="btn" id="pomoBtn"></button></div>
+          <div class="title">⚙ <span id="pageTitle"></span></div>
+          <div class="optlist" data-page="Piadas">
+            <div class="opt"><span>Piadas de vez em quando</span><button class="btn" data-pref="jokes"></button></div>
+            <div class="opt"><span>Falar as piadas</span><button class="btn" data-pref="joke_voice"></button></div>
+            <div class="opt"><span>Intervalo entre piadas</span><button class="btn" id="prefInterval"></button></div>
           </div>
-          <div class="btns">
-            <button class="btn" data-go="menu">◀ Voltar</button>
-            <button class="btn info" id="jokeNow">😄 Contar uma agora</button>
+          <div class="optlist" data-page="Som e tela">
+            <div class="opt"><span>Volume</span><button class="btn" data-cycle="volume"></button></div>
+            <div class="opt"><span>Brilho</span><button class="btn" data-cycle="brightness"></button></div>
+            <div class="opt"><span>Visual</span><button class="btn" id="prefSkin"></button></div>
+            <div class="opt"><span>Indicador de bateria</span><button class="btn" data-pref="battery"></button></div>
+          </div>
+          <div class="optlist" data-page="Avisos e clima">
+            <div class="opt"><span id="weatherLabel">Temperatura lá fora</span><button class="btn" data-pref="weather"></button></div>
+            <div class="opt"><span>Aviso de tarefa longa</span><button class="btn" id="prefLong"></button></div>
+          </div>
+          <div class="btns pager">
+            <button class="btn" data-go="menu">◀ Menu</button>
+            <button class="btn" id="pagePrev">‹</button>
+            <span id="pageCount"></span>
+            <button class="btn" id="pageNext">›</button>
           </div>
         </div>
       </div>
@@ -476,6 +490,8 @@ function render() {
     $("batt").classList.toggle("low", b.percent <= 15 && !b.charging);
   }
   const skin = (state.settings && state.settings.skin) || "classic";
+  const bright = { auto: 1, low: 0.55, mid: 0.8, high: 1 }[(state.settings || {}).brightness] ?? 1;
+  $("screen").style.filter = bright < 1 ? `brightness(${bright})` : "";
   $("screen").classList.toggle("skin-eyes", skin === "eyes");
   calAt = Date.now();
   const pomo = state.pomodoro;
@@ -503,8 +519,9 @@ function render() {
     $("prefSkin").textContent = state.settings.skin === "eyes" ? "Só os olhos" : "Clássico";
     const lt = state.settings.long_task_min;
     $("prefLong").textContent = lt ? `${lt} min` : "Desligado";
-    $("pomoBtn").textContent = state.pomodoro ? "Parar" : "Iniciar";
-    $("pomoBtn").classList.toggle("on", !!state.pomodoro);
+    document.querySelectorAll("[data-cycle]").forEach(b => {
+      b.textContent = CYCLES[b.dataset.cycle].labels[state.settings[b.dataset.cycle]] || "—";
+    });
     const geo = state.settings.city_geo;
     $("weatherLabel").textContent = `Temperatura em ${geo ? geo.name : (state.settings.city || "Canoas")}`;
   }
@@ -653,16 +670,33 @@ $("prefLong").onclick = (e) => {
   const now = state.settings ? state.settings.long_task_min : 15;
   send({ type: "settings", values: { long_task_min: LONG_OPTIONS[(LONG_OPTIONS.indexOf(now) + 1) % LONG_OPTIONS.length] } });
 };
-$("pomoBtn").onclick = (e) => {
-  e.stopPropagation();
-  send({ type: "pomodoro", action: state.pomodoro ? "stop" : "start" });
+// Volume and brightness: a tap moves to the next option.
+const CYCLES = {
+  volume: { order: ["off", "low", "mid", "high"], labels: { off: "Mudo", low: "Baixo", mid: "Médio", high: "Alto" } },
+  brightness: { order: ["auto", "low", "mid", "high"], labels: { auto: "Automático", low: "Baixo", mid: "Médio", high: "Alto" } },
 };
+document.querySelectorAll("[data-cycle]").forEach(b => b.onclick = (e) => {
+  e.stopPropagation();
+  const c = CYCLES[b.dataset.cycle], now = state.settings ? state.settings[b.dataset.cycle] : c.order[0];
+  send({ type: "settings", values: { [b.dataset.cycle]: c.order[(c.order.indexOf(now) + 1) % c.order.length] } });
+});
+// Settings in pages by kind, with ‹ › and "1/3".
+const PAGES = [...document.querySelectorAll("#v-settings .optlist")];
+let page = 0;
+function showPage(i) {
+  page = (i + PAGES.length) % PAGES.length;
+  PAGES.forEach((el, n) => el.classList.toggle("on", n === page));
+  $("pageTitle").textContent = PAGES[page].dataset.page;
+  $("pageCount").textContent = `${page + 1}/${PAGES.length}`;
+}
+$("pagePrev").onclick = (e) => { e.stopPropagation(); showPage(page - 1); };
+$("pageNext").onclick = (e) => { e.stopPropagation(); showPage(page + 1); };
+showPage(0);
 $("prefSkin").onclick = (e) => {
   e.stopPropagation();
   const next = state.settings && state.settings.skin === "eyes" ? "classic" : "eyes";
   send({ type: "settings", values: { skin: next } });
 };
-$("jokeNow").onclick = (e) => { e.stopPropagation(); send({ type: "joke_now" }); show("face"); };
 
 let bubbleTimer = null;
 function showJoke(msg) {
@@ -685,6 +719,8 @@ function speak(msg) {
 // Replies arrive as mono WAV. Played through Web Audio they are upmixed to both
 // ears and boosted, so they sit at the level of the chime and other sounds.
 const SPEECH_GAIN = 1.8;
+const VOLUME = { off: 0, low: 0.3, mid: 0.6, high: 1 };
+function volumeFactor() { return VOLUME[(state.settings || {}).volume] ?? 0.6; }
 async function playNext() {
   const msg = speechQueue.shift();
   if (!msg) { talking = null; render(); return; }
@@ -698,7 +734,7 @@ async function playNext() {
     // The hub already normalizes to about 0 dBFS peaks, so the boost needs a
     // limiter after it or the loud syllables clip (the "chiado").
     const limiter = new DynamicsCompressorNode(audio, { threshold: -3, knee: 2, ratio: 20, attack: 0.002, release: 0.1 });
-    src.buffer = buffer; gain.gain.value = SPEECH_GAIN;
+    src.buffer = buffer; gain.gain.value = SPEECH_GAIN * volumeFactor();
     src.connect(gain).connect(limiter).connect(audio.destination);
     src.onended = () => playNext();
     src.start();
@@ -716,7 +752,7 @@ function beep(freqs) {
     freqs.forEach((f, i) => {
       const o = audio.createOscillator(), g = audio.createGain();
       // Soft sine chime: the old square wave at the same gain was much louder than the voice.
-      o.frequency.value = f; o.type = "sine"; g.gain.value = 0.05;
+      o.frequency.value = f; o.type = "sine"; g.gain.value = 0.08 * volumeFactor();
       o.connect(g).connect(audio.destination);
       o.start(audio.currentTime + i * 0.12); o.stop(audio.currentTime + i * 0.12 + 0.09);
     });

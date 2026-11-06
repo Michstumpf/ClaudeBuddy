@@ -129,7 +129,8 @@ Prioridade, da menor para a maior: padrões do código < `config.toml` < variáv
 - **Jira e Slack** (desligados até ter credenciais, `work_watch.py`): Jira avisa ticket novo para você e mudança de status dos seus (`[jira] site`/`email` + token em `~/.config/claude-buddy/jira_token`); Slack avisa menções, dizendo só quem e onde, nunca o texto (user token `xoxp-…` com `search:read` em `~/.config/claude-buddy/slack_token`). Avisos esperam o modo foco acabar.
 - **Visual (skin):** em ⚙ → "Visual": **Clássico** (o mascote inteiro) ou **Só os olhos**, para quando o Buddy estiver numa carcaça com o formato do mascote. Nessa skin a tela fica na cor do corpo e o estado aparece pela cor do fundo: laranja (normal), amarelo (esperando você), verde (terminou), cinza (offline), mais escuro à noite.
 - **Tamanho real:** o painel do simulador tem um botão que mostra a tela no tamanho físico do CoreS3 (2", 40,6 mm de largura), com calibração por um cartão de crédito.
-- **Configurações (⚙ na lista de sessões):** piadas ligadas/desligadas, falar as piadas, intervalo (15/30/45/60/120 min), temperatura e "contar uma agora". Salvas em `~/.config/claude-buddy/prefs.json`.
+- **Menu (toque no rosto):** botões grandes para Sessões, Ajustes, Piada e Pomodoro (tela própria com o tempo grande, iniciar/parar/pular). Volta ao rosto em 10 s sem toque.
+- **Ajustes (em páginas, ‹ › e "1/3"):** *Piadas* (ligadas, faladas, intervalo 15/30/45/60/120 min), *Som e tela* (volume Mudo/Baixo/Médio/Alto; brilho Automático/Baixo/Médio/Alto, em que modo noite e bateria baixa ainda escurecem; visual; indicador de bateria), *Avisos e clima* (temperatura, aviso de tarefa longa). Salvas em `~/.config/claude-buddy/prefs.json`.
 - Protocolo: Buddy → hub `{"type":"settings","values":{…}}` e `{"type":"joke_now"}`; hub → Buddy `{"type":"joke","text":"…","url"?}` e o estado traz `settings` e `weather`.
 
 ## Transcrição na GPU do desktop (opcional)

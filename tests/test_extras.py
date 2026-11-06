@@ -242,3 +242,11 @@ def test_networks_from_env(monkeypatch, tmp_path):
     assert HubSettings.from_env({}).allowed_networks == ["127.0.0.0/8", "192.168.1.0/24"]
     monkeypatch.delenv("BUDDY_ALLOWED_NETWORKS")
     assert HubSettings.from_env({}).allowed_networks == ["127.0.0.0/8", "::1/128"]
+
+
+def test_volume_and_brightness_prefs(tmp_path):
+    p = prefs_module.Prefs(path=tmp_path / "p.json")
+    assert (p["volume"], p["brightness"]) == ("mid", "auto")
+    assert p.update({"volume": "off", "brightness": "high"})
+    assert not p.update({"volume": "loud", "brightness": 3})  # unknown values are ignored
+    assert (p["volume"], p["brightness"]) == ("off", "high")
