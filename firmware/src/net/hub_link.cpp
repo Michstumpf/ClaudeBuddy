@@ -32,6 +32,7 @@ HubConfig cfg_;
 MessageHandler on_message_ = nullptr;
 StatusHandler on_status_ = nullptr;
 enum class Phase { Off, Wifi, Hub, Connected } phase_ = Phase::Off;
+uint32_t connected_at_ = 0;  // millis() when the WebSocket opened
 uint32_t wifi_started_ = 0;
 
 void status(const char* text, bool connected) {
@@ -42,11 +43,15 @@ void on_ws_event(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED:
       phase_ = Phase::Connected;
+      connected_at_ = millis();
       Serial.println("hub: connected");
       status("conectado", true);
       break;
     case WStype_DISCONNECTED:
-      if (phase_ == Phase::Connected) Serial.println("hub: disconnected");
+      // How long the link lasted, and the WiFi signal, to tell drops apart.
+      if (phase_ == Phase::Connected)
+        Serial.printf("hub: disconnected after %lus (WiFi %d dBm)\n", (unsigned long)((millis() - connected_at_) / 1000),
+                      (int)WiFi.RSSI());
       phase_ = Phase::Hub;
       status("procurando o hub…", false);
       break;
@@ -94,6 +99,9 @@ void hub_begin(const HubConfig& cfg, MessageHandler on_message, StatusHandler on
     return;
   }
   WiFi.mode(WIFI_STA);
+  // Modem sleep delays replies by up to a beacon interval or more (worse on a
+  // mesh), which can make the heartbeat give up on a hub that is fine.
+  WiFi.setSleep(false);
   WiFi.begin(cfg_.ssid.c_str(), cfg_.password.c_str());
   wifi_started_ = millis();
   phase_ = Phase::Wifi;
@@ -119,7 +127,7 @@ void hub_loop() {
         ws.begin(cfg_.host.c_str(), cfg_.port, path.c_str());
         ws.onEvent(on_ws_event);
         ws.setReconnectInterval(3000);
-        ws.enableHeartbeat(15000, 3000, 2);  // notices a hub that vanished without closing
+        ws.enableHeartbeat(15000, 5000, 3);  // notices a hub that vanished without closing (~45 s)
         phase_ = Phase::Hub;
         status("procurando o hub…", false);
       } else if (millis() - wifi_started_ > 20000) {

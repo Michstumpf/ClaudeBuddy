@@ -17,7 +17,11 @@ namespace ui {
 namespace {
 
 constexpr int kUnit = 10;               // 1 sprite unit = 10 px, like the simulator
-constexpr int kSpriteX = 70, kSpriteY = 52;
+constexpr int kSpriteX = 70, kSpriteY = 52;  // where the body's top-left corner sits
+// The sprite's box has room around the body for the headphones' band (above),
+// the coffee mug (right) and the eyes looking around: LVGL does not draw a
+// child outside its parent, which is how the band went missing on the CoreS3.
+constexpr int kPad = 3 * kUnit, kCanvasW = 25 * kUnit, kCanvasH = 13 * kUnit;
 const lv_color_t kBg = lv_color_hex(0x0e0f12), kFg = lv_color_hex(0xf2efe9), kMuted = lv_color_hex(0xb9b4ad),
                  kAccent = lv_color_hex(0xd97757), kOff = lv_color_hex(0x5a5550), kWarn = lv_color_hex(0xe8b04a),
                  kOk = lv_color_hex(0x4caf7a), kBar = lv_color_hex(0x1b1d22);
@@ -62,6 +66,7 @@ lv_obj_t *face_, *sprite_, *label_, *weather_, *bubble_, *bubble_text_, *bar_lef
 lv_obj_t *spin_row_ = nullptr, *glyph_ = nullptr, *verb_ = nullptr;
 lv_obj_t *fx_alert_, *fx_zzz_, *fx_spark_[2];
 std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_, big_eyes_;
+lv_obj_t* eyes_layer_ = nullptr;  // holds eyes_, moved sideways when the mascot looks around
 // Skin "eyes": only the eyes, big, on a body-colored screen (for a case shaped
 // like the mascot). Same eye shapes, 24 px units, sprite columns 3..14.
 constexpr int kBigUnit = 24, kBigX = 16, kBigY = 34;
@@ -104,8 +109,8 @@ lv_obj_t* text(lv_obj_t* parent, const lv_font_t* font, lv_color_t color) {
 void build_sprite() {
   sprite_ = lv_obj_create(face_);
   lv_obj_remove_style_all(sprite_);
-  lv_obj_set_size(sprite_, sprite::kCols * kUnit, 10 * kUnit);
-  lv_obj_set_pos(sprite_, kSpriteX, kSpriteY);
+  lv_obj_set_size(sprite_, kCanvasW, kCanvasH);
+  lv_obj_set_pos(sprite_, kSpriteX - kPad, kSpriteY - kPad);
   lv_obj_remove_flag(sprite_, LV_OBJ_FLAG_CLICKABLE);
   for (int y = 0; y < sprite::kBodyRows; y++) {  // one rect per horizontal run
     const char* row = sprite::kBody[y];
@@ -113,12 +118,17 @@ void build_sprite() {
       if (row[x] != '#') { x++; continue; }
       int end = x;
       while (end < sprite::kCols && row[end] == '#') end++;
-      body_.push_back(box(sprite_, x * kUnit, y * kUnit, (end - x) * kUnit, kUnit, kAccent));
+      body_.push_back(box(sprite_, kPad + x * kUnit, kPad + y * kUnit, (end - x) * kUnit, kUnit, kAccent));
       x = end;
     }
   }
-  for (auto& l : sprite::kLegsA) legs_a_.push_back(box(sprite_, l[0] * kUnit, l[1] * kUnit, kUnit, 2 * kUnit, kAccent));
-  for (auto& l : sprite::kLegsB) legs_b_.push_back(box(sprite_, l[0] * kUnit, l[1] * kUnit, kUnit, 2 * kUnit, kAccent));
+  for (auto& l : sprite::kLegsA) legs_a_.push_back(box(sprite_, kPad + l[0] * kUnit, kPad + l[1] * kUnit, kUnit, 2 * kUnit, kAccent));
+  for (auto& l : sprite::kLegsB) legs_b_.push_back(box(sprite_, kPad + l[0] * kUnit, kPad + l[1] * kUnit, kUnit, 2 * kUnit, kAccent));
+  eyes_layer_ = lv_obj_create(sprite_);
+  lv_obj_remove_style_all(eyes_layer_);
+  lv_obj_set_pos(eyes_layer_, kPad, kPad);
+  lv_obj_set_size(eyes_layer_, sprite::kCols * kUnit, 5 * kUnit);
+  lv_obj_remove_flag(eyes_layer_, LV_OBJ_FLAG_CLICKABLE);
 }
 
 void draw_eyes(const sprite::Eyes& e) {
@@ -128,7 +138,7 @@ void draw_eyes(const sprite::Eyes& e) {
   big_eyes_.clear();
   for (int i = 0; i < e.count; i++) {
     const auto& r = e.rects[i];
-    eyes_.push_back(box(sprite_, r.x * kUnit, r.y * kUnit, r.w * kUnit, r.h * kUnit, kBg));
+    eyes_.push_back(box(eyes_layer_, r.x * kUnit, r.y * kUnit, r.w * kUnit, r.h * kUnit, kBg));
     big_eyes_.push_back(box(bigeyes_, (r.x - 3) * kBigUnit, r.y * kBigUnit, r.w * kBigUnit, r.h * kBigUnit, kBg));
   }
 }
@@ -230,7 +240,7 @@ void set_mood(const app::MoodView& v) {
     draw_eyes(mood_ == app::Mood::Idle && face_phase_ == "break" ? sprite::kEyesHappy : eyes_for(mood_));
     color_sprite(mood_ == app::Mood::Off ? kOff : kAccent);
     show_spinner(mood_ == app::Mood::Work);
-    lv_obj_set_y(sprite_, kSpriteY);
+    lv_obj_set_y(sprite_, kSpriteY - kPad);
     // The effects belong to the whole mascot; the eyes skin shows state by color.
     const bool fx = !eyes_skin_;
     if (fx && mood_ == app::Mood::Sleep) lv_obj_remove_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(fx_zzz_, LV_OBJ_FLAG_HIDDEN);
@@ -245,7 +255,7 @@ void set_mood(const app::MoodView& v) {
 void hide_bubble() {
   bubble_until_ = 0;
   lv_obj_add_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
-  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX);
+  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX - kPad);
 }
 
 void set_skin(bool eyes) {
@@ -317,11 +327,14 @@ void animate() {
     lv_obj_set_style_translate_y(fx_notes_[i], -rise, 0);
     lv_obj_set_style_translate_y(fx_steam_[i], -rise / 2, 0);
   }
-  lv_obj_set_y(sprite_, kSpriteY + dy);
+  lv_obj_set_y(sprite_, kSpriteY - kPad + dy);
   const int look[] = {0, 0, -1, -1, 0, 0, 1, 1};  // like the simulator's "look" animation
-  lv_obj_set_x(bigeyes_, kBigX + (mood_ == app::Mood::Work ? look[(frame_ / 3) % 8] * kBigUnit : 0));
-  for (auto* l : legs_a_) lv_obj_set_y(l, 8 * kUnit - (mood_ == app::Mood::Work && step ? kUnit : 0));
-  for (auto* l : legs_b_) lv_obj_set_y(l, 8 * kUnit - (mood_ == app::Mood::Work && !step ? kUnit : 0));
+  const bool looking = mood_ == app::Mood::Work || (mood_ == app::Mood::Idle && face_phase_ == "focus");
+  const int glance = looking ? look[(frame_ / 3) % 8] : 0;
+  lv_obj_set_x(bigeyes_, kBigX + glance * kBigUnit);
+  lv_obj_set_x(eyes_layer_, kPad + glance * kUnit);
+  for (auto* l : legs_a_) lv_obj_set_y(l, kPad + 8 * kUnit - (mood_ == app::Mood::Work && step ? kUnit : 0));
+  for (auto* l : legs_b_) lv_obj_set_y(l, kPad + 8 * kUnit - (mood_ == app::Mood::Work && !step ? kUnit : 0));
   if (bubble_until_ && millis() > bubble_until_) hide_bubble();
 }
 
@@ -907,18 +920,17 @@ void begin(Sender send) {
   lv_obj_add_flag(bigeyes_, LV_OBJ_FLAG_HIDDEN);
 
   // Pomodoro look (see show_pomodoro_look); sprite units, drawn past the body's box.
-  lv_obj_add_flag(sprite_, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
   const struct { int8_t x, y, w, h; uint32_t color; } phones[] = {
       {4, -2, 10, 1, 0x8a8f99}, {3, -1, 1, 1, 0x8a8f99}, {14, -1, 1, 1, 0x8a8f99},  // band
       {1, 0, 2, 4, 0x4a4f59},   {15, 0, 2, 4, 0x4a4f59},                             // cups
       {2, 1, 1, 2, 0xe8875f},   {15, 1, 1, 2, 0xe8875f}};                            // pads
   for (auto& r : phones)
-    phones_.push_back(box(sprite_, r.x * kUnit, r.y * kUnit, r.w * kUnit, r.h * kUnit, lv_color_hex(r.color)));
-  mug_.push_back(box(sprite_, 18 * kUnit, 5 * kUnit, 3 * kUnit, 3 * kUnit, lv_color_hex(0xe9e4dc)));
-  mug_.push_back(box(sprite_, 21 * kUnit, 6 * kUnit, kUnit, kUnit, lv_color_hex(0xe9e4dc)));
-  mug_.push_back(box(sprite_, 18 * kUnit, 5 * kUnit, 3 * kUnit, kUnit, lv_color_hex(0x7a4a2e)));
-  fx_steam_[0] = box(sprite_, 186, 30, 4, 10, lv_color_hex(0x8a857f));
-  fx_steam_[1] = box(sprite_, 196, 26, 4, 10, lv_color_hex(0x8a857f));
+    phones_.push_back(box(sprite_, kPad + r.x * kUnit, kPad + r.y * kUnit, r.w * kUnit, r.h * kUnit, lv_color_hex(r.color)));
+  mug_.push_back(box(sprite_, kPad + 18 * kUnit, kPad + 5 * kUnit, 3 * kUnit, 3 * kUnit, lv_color_hex(0xe9e4dc)));
+  mug_.push_back(box(sprite_, kPad + 21 * kUnit, kPad + 6 * kUnit, kUnit, kUnit, lv_color_hex(0xe9e4dc)));
+  mug_.push_back(box(sprite_, kPad + 18 * kUnit, kPad + 5 * kUnit, 3 * kUnit, kUnit, lv_color_hex(0x7a4a2e)));
+  fx_steam_[0] = box(sprite_, kPad + 186, kPad + 30, 4, 10, lv_color_hex(0x8a857f));
+  fx_steam_[1] = box(sprite_, kPad + 196, kPad + 26, 4, 10, lv_color_hex(0x8a857f));
   fx_notes_[0] = text(face_, &buddy_font_13, lv_color_hex(0xe8875f));
   lv_label_set_text(fx_notes_[0], "♪");
   lv_obj_set_pos(fx_notes_[0], kSpriteX + 168, kSpriteY - 18);
@@ -1022,7 +1034,7 @@ void on_joke(const std::string& t) {
   if (view_ != kApprove) show(kFace);
   lv_label_set_text(bubble_text_, t.c_str());
   lv_obj_remove_flag(bubble_, LV_OBJ_FLAG_HIDDEN);
-  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX - 34);  // step aside for the bubble
+  if (!eyes_skin_) lv_obj_set_x(sprite_, kSpriteX - kPad - 34);  // step aside for the bubble
   bubble_until_ = millis() + 15000;
 }
 
