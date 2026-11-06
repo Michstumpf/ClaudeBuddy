@@ -30,7 +30,7 @@ Sender send_ = nullptr;
 app::State state_;
 bool connected_ = false;
 
-enum View : uint8_t { kFace, kList, kSession, kApprove, kSettings, kMenu, kPomo, kViews };
+enum View : uint8_t { kFace, kList, kSession, kApprove, kSettings, kMenu, kPomo, kRec, kPick, kViews };
 lv_obj_t* views_[kViews];
 View view_ = kFace;
 // Taps right after the screen changed are ignored: a finger already down when
@@ -49,8 +49,8 @@ const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), k
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-constexpr int kPrefs = 11;
-// jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro length, wifi, volume, brightness
+constexpr int kPrefs = 12;
+// jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro length, wifi, volume, brightness, mic
 lv_obj_t* pref_btn_[kPrefs];
 void (*setup_handler_)() = nullptr;
 void (*dictate_start_)() = nullptr;
@@ -80,6 +80,8 @@ lv_obj_t *fx_notes_[2], *fx_steam_[2], *pomo_track_, *pomo_mini_;
 std::string face_phase_;  // pomodoro phase the face is drawn for
 // Shaken: dizzy (spiral eyes, wobbling, stars around the head) until the joke arrives.
 uint32_t dizzy_until_ = 0;
+MicHandlers mic_;             // the 🎤 flow, see set_mic_handlers
+lv_obj_t* mic_btn_ = nullptr;
 lv_obj_t* fx_stars_[3];
 // Idle blink, like the simulator: eyes shut for 140 ms every 3.5 s.
 uint32_t blink_at_ = 0;
@@ -307,6 +309,10 @@ void refresh() {
   set_mood(v);
   show_pomodoro_look();
 
+  // With the 🎤 button on, the temperature moves to the right corner.
+  show_if(mic_btn_, state_.settings.mic && mic_.start && connected_);
+  if (state_.settings.mic) lv_obj_align(weather_, LV_ALIGN_TOP_RIGHT, -8, 6);
+  else lv_obj_set_pos(weather_, 8, 6);
   if (state_.weather.valid && state_.settings.weather)
     lv_label_set_text_fmt(weather_, "%d° %s", state_.weather.temp, state_.weather.place.c_str());
   else
@@ -698,6 +704,7 @@ void on_pref(lv_event_t* e) {
       return;
     case 9: s.volume = next_of(kLevels, s.volume); break;
     case 10: s.brightness = next_of(kBright, s.brightness); break;
+    case 11: s.mic = !s.mic; break;
   }
   if (send_) send_(app::settings(s));
 }
@@ -709,9 +716,9 @@ struct Page {
 };
 constexpr Page kPages[] = {
     {"Piadas", {0, 1, 2, -1}, nullptr},
-    {"Som e tela", {9, 10, 4, 5}, nullptr},
+    {"Som e tela", {9, 10, 4, 11}, nullptr},
     {"Pomodoro", {7, -1}, "A duração vale a partir do próximo pomodoro."},
-    {"Avisos e clima", {3, 6, -1}, nullptr},
+    {"Avisos e clima", {3, 6, 5, -1}, nullptr},
     {"WiFi e hub", {8, -1}, "Configurar abre a rede Buddy-setup para trocar o WiFi ou o hub."},
     {"Sistema", {-1}, nullptr},  // live numbers, see set_stats
 };
@@ -740,7 +747,8 @@ void build_settings(lv_obj_t* v) {
   lv_obj_set_pos(page_title_, 8, 8);
   const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
                                "Temperatura lá fora", "Visual", "Indicador de bateria",
-                               "Aviso de tarefa longa", "Foco + pausa", "WiFi e hub", "Volume", "Brilho"};
+                               "Aviso de tarefa longa", "Foco + pausa", "WiFi e hub", "Volume", "Brilho",
+                               "Microfone (botão)"};
   for (int p = 0; p < kPageCount; p++) {
     pages_[p] = lv_obj_create(v);
     lv_obj_remove_style_all(pages_[p]);
@@ -800,8 +808,9 @@ void build_settings(lv_obj_t* v) {
 
 void fill_settings() {
   const app::Settings& st = state_.settings;
-  const bool on[kPrefs] = {st.jokes, st.joke_voice, false, st.weather, false, st.show_battery};
-  for (int i : {0, 1, 3, 5}) {
+  bool on[kPrefs] = {st.jokes, st.joke_voice, false, st.weather, false, st.show_battery};
+  on[11] = st.mic;
+  for (int i : {0, 1, 3, 5, 11}) {
     set_button_text(pref_btn_[i], on[i] ? "Ligado" : "Desligado");
     lv_obj_set_style_bg_color(pref_btn_[i], on[i] ? kBtnOk : kBtn, 0);
   }
@@ -957,6 +966,164 @@ void fill_pomo() {
   if (running) lv_obj_remove_state(pomo_skip_, LV_STATE_DISABLED); else lv_obj_add_state(pomo_skip_, LV_STATE_DISABLED);
 }
 
+// ---- microphone: 🎤 on the face → record (live wave) → read the text → pick where it goes ----
+
+lv_obj_t *rec_time_, *rec_dot_, *rec_hint_;
+constexpr int kWaveBars = 40;
+lv_obj_t* rec_bars_[kWaveBars];
+int rec_levels_[kWaveBars];
+uint32_t rec_tick_ = 0;
+lv_obj_t *pick_text_, *pick_list_;
+std::string pick_transcript_;  // empty until the hub answers
+std::string last_target_;      // the session dictated to last: marked in the list
+// What each row of the list sends to: "@command", "focus" or a session id. A copy,
+// since state_ (and its strings) is replaced by every state message.
+std::vector<std::string> pick_targets_;
+uint32_t pick_back_at_ = 0;     // after a result: back to the face then
+
+void on_mic(lv_event_t*) {
+  if (settling() || !mic_.start) return;
+  if (send_) send_(app::touch());
+  if (!mic_.start()) {
+    on_notice("Não consegui ligar o microfone.");
+    return;
+  }
+  for (int& l : rec_levels_) l = 0;
+  lv_label_set_text(rec_time_, "0:00");
+  show(kRec);
+}
+
+void on_rec_done(lv_event_t* e) {
+  if (settling() || !mic_.finish) return;
+  const bool send = lv_event_get_user_data(e) != nullptr;
+  if (send) {
+    pick_transcript_.clear();
+    pick_back_at_ = 0;
+    show(kPick);
+    lv_refr_now(nullptr);  // "transcrevendo…" on screen while finish() blocks
+  } else {
+    show(kFace);
+  }
+  mic_.finish(send);
+}
+
+void build_rec(lv_obj_t* v) {
+  rec_dot_ = box(v, 10, 13, 10, 10, kBad);
+  lv_obj_set_style_radius(rec_dot_, LV_RADIUS_CIRCLE, 0);
+  lv_obj_t* title = text(v, &buddy_font_13, kFg);
+  lv_label_set_text(title, "Gravando");
+  lv_obj_set_pos(title, 28, 9);
+  rec_time_ = text(v, &buddy_font_13, kMuted);
+  lv_obj_align(rec_time_, LV_ALIGN_TOP_RIGHT, -10, 9);
+  lv_obj_t* wave = box(v, 8, 34, 304, 100, kBox);
+  lv_obj_set_style_radius(wave, 6, 0);
+  for (int i = 0; i < kWaveBars; i++) rec_bars_[i] = box(wave, 4 + i * 7 + 1, 48, 5, 4, lv_color_hex(0xe8875f));
+  rec_hint_ = text(v, &buddy_font_11, lv_color_hex(0x7d776f));
+  lv_label_set_text(rec_hint_, "fale; toque em Enviar quando terminar");
+  lv_obj_align(rec_hint_, LV_ALIGN_TOP_MID, 0, 142);
+  lv_obj_t* cancel = button(v, "✕ Cancelar", kBtnBad, on_rec_done, nullptr);
+  lv_obj_set_size(cancel, 148, 40);
+  lv_obj_set_pos(cancel, 8, 170);
+  lv_obj_t* send = button(v, "Enviar ▶", kBtnOk, on_rec_done, reinterpret_cast<void*>(1));
+  lv_obj_set_size(send, 148, 40);
+  lv_obj_set_pos(send, 164, 170);
+}
+
+void tick_rec() {
+  if (view_ != kRec || !mic_.level || millis() - rec_tick_ < 80) return;
+  rec_tick_ = millis();
+  for (int i = 0; i < kWaveBars - 1; i++) rec_levels_[i] = rec_levels_[i + 1];
+  rec_levels_[kWaveBars - 1] = mic_.level();
+  for (int i = 0; i < kWaveBars; i++) {
+    const int h = rec_levels_[i] < 5 ? 4 : rec_levels_[i] * 90 / 100;
+    lv_obj_set_height(rec_bars_[i], h);
+    lv_obj_set_y(rec_bars_[i], 50 - h / 2);
+  }
+  const int secs = static_cast<int>(mic_.seconds ? mic_.seconds() : 0);
+  lv_label_set_text_fmt(rec_time_, "%d:%02d", secs / 60, secs % 60);
+  lv_obj_set_style_opa(rec_dot_, (millis() / 500) % 2 ? LV_OPA_COVER : LV_OPA_30, 0);
+  if (secs >= 60) {  // the limit: send what there is
+    lv_obj_send_event(lv_obj_get_child(views_[kRec], -1), LV_EVENT_CLICKED, nullptr);
+  }
+}
+
+void on_pick(lv_event_t* e) {
+  if (settling() || pick_transcript_.empty() || !send_) return;
+  const size_t i = reinterpret_cast<uintptr_t>(lv_event_get_user_data(e));
+  if (i >= pick_targets_.size()) return;
+  if (pick_targets_[i] == "@command") {
+    lv_label_set_text(pick_text_, "enviando comando…");
+    send_(app::command(pick_transcript_));
+    return;
+  }
+  last_target_ = pick_targets_[i];
+  lv_label_set_text(pick_text_, last_target_ == "focus" ? "digitando na janela em foco…" : "enviando…");
+  send_(app::dictate(last_target_, pick_transcript_));
+}
+
+lv_obj_t* pick_row(const char* label, const char* sub, lv_color_t color, const std::string& target, bool enabled,
+                   bool last) {
+  pick_targets_.push_back(target);
+  lv_obj_t* row = lv_button_create(pick_list_);
+  lv_obj_set_size(row, LV_PCT(100), 30);
+  lv_obj_set_style_bg_color(row, color, 0);
+  lv_obj_set_style_radius(row, 6, 0);
+  lv_obj_set_style_shadow_width(row, 0, 0);
+  lv_obj_set_style_pad_hor(row, 8, 0);
+  if (last) {
+    lv_obj_set_style_border_width(row, 2, 0);
+    lv_obj_set_style_border_color(row, kInfo, 0);
+  }
+  lv_obj_t* l = text(row, &buddy_font_11, kFg);
+  lv_label_set_text(l, label);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(l, 190);
+  lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
+  lv_obj_t* r = text(row, &buddy_font_11, lv_color_hex(0xc9c4bc));
+  lv_label_set_text(r, sub);
+  lv_obj_align(r, LV_ALIGN_RIGHT_MID, 0, 0);
+  lv_obj_add_event_cb(row, on_pick, LV_EVENT_CLICKED, reinterpret_cast<void*>(pick_targets_.size() - 1));
+  if (!enabled) lv_obj_add_state(row, LV_STATE_DISABLED);
+  return row;
+}
+
+void fill_pick() {
+  lv_label_set_text(pick_text_, pick_transcript_.empty() ? "transcrevendo…" : pick_transcript_.c_str());
+  lv_obj_clean(pick_list_);
+  pick_targets_.clear();
+  const bool ready = !pick_transcript_.empty();
+  pick_row("Comando de voz", "pomodoro, boa noite…", kBtnInfo, "@command", ready, false);
+  // Sessions outside tmux: type into the focused window on the notebook, like F9.
+  pick_row("Janela em foco", "no notebook, como o F9", kBtn, "focus", ready, last_target_ == "focus");
+  for (int pass = 0; pass < 2; pass++)  // the last session used first
+    for (const auto& x : state_.sessions) {
+      if (x.status == app::Status::Offline || (x.id == last_target_) != (pass == 0)) continue;
+      pick_row(x.name.c_str(), x.has_tmux ? status_name(x.status) : "sem tmux", kBtn, x.id,
+               ready && x.has_tmux, x.id == last_target_);
+    }
+}
+
+void build_pick(lv_obj_t* v) {
+  lv_obj_t* title = text(v, &buddy_font_13, kFg);
+  lv_label_set_text(title, "Para onde?");
+  lv_obj_set_pos(title, 8, 6);
+  lv_obj_t* tb = text_box(v, 8, 26, 304, 44);
+  lv_obj_add_flag(tb, LV_OBJ_FLAG_SCROLLABLE);
+  pick_text_ = text(tb, &buddy_font_11, kFg);
+  lv_obj_set_width(pick_text_, 290);
+  lv_label_set_long_mode(pick_text_, LV_LABEL_LONG_WRAP);
+  pick_list_ = lv_obj_create(v);
+  lv_obj_remove_style_all(pick_list_);
+  lv_obj_set_pos(pick_list_, 8, 74);
+  lv_obj_set_size(pick_list_, 304, 96);
+  lv_obj_set_flex_flow(pick_list_, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(pick_list_, 4, 0);
+  lv_obj_add_flag(pick_list_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_t* cancel = button(v, "✕ Cancelar", kBtn, go, to(kFace));
+  lv_obj_set_size(cancel, 304, 36);
+  lv_obj_set_pos(cancel, 8, 176);
+}
+
 // ---- navigation ----
 
 void show(View v) {
@@ -969,6 +1136,7 @@ void show(View v) {
   if (v == kSettings) fill_settings();
   if (v == kMenu) fill_menu();
   if (v == kPomo) fill_pomo();
+  if (v == kPick) fill_pick();
   if (v == kApprove && !state_.pending.empty()) fill_approve();
   lv_display_trigger_activity(nullptr);  // restarts the idle-return countdown
 }
@@ -976,6 +1144,7 @@ void show(View v) {
 void route() {
   // Like the simulator: a pending approval takes over the screen; when it is
   // gone, back to the face. Lists left alone go back to the face after 30 s.
+  if (view_ == kRec || view_ == kPick) return;  // recording or choosing: an approval waits (as in the simulator)
   if (!state_.pending.empty() && view_ != kApprove) show(kApprove);
   else if (state_.pending.empty() && view_ == kApprove) { approval_id_.clear(); show(kFace); }
   else if (view_ == kApprove) fill_approve();
@@ -1007,6 +1176,8 @@ void begin(Sender send) {
   build_settings(views_[kSettings]);
   build_menu(views_[kMenu]);
   build_pomo(views_[kPomo]);
+  build_rec(views_[kRec]);
+  build_pick(views_[kPick]);
   build_sprite();
   bigeyes_ = lv_obj_create(face_);
   lv_obj_remove_style_all(bigeyes_);
@@ -1052,6 +1223,30 @@ void begin(Sender send) {
 
   weather_ = text(face_, &buddy_font_11, kMuted);
   lv_obj_set_pos(weather_, 8, 6);
+  // 🎤 (Ajustes → Som e tela → Microfone): no emoji in the font, so a drawn mic.
+  mic_btn_ = lv_button_create(face_);
+  lv_obj_set_size(mic_btn_, 44, 38);
+  lv_obj_set_pos(mic_btn_, 6, 4);
+  lv_obj_set_style_bg_color(mic_btn_, kBtnInfo, 0);
+  lv_obj_set_style_radius(mic_btn_, 10, 0);
+  lv_obj_set_style_shadow_width(mic_btn_, 0, 0);
+  lv_obj_set_ext_click_area(mic_btn_, 6);
+  lv_obj_add_event_cb(mic_btn_, on_mic, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* capsule = box(mic_btn_, 0, 0, 10, 16, kFg);
+  lv_obj_set_style_radius(capsule, 5, 0);
+  lv_obj_align(capsule, LV_ALIGN_TOP_MID, 0, -4);
+  lv_obj_t* cradle = lv_obj_create(mic_btn_);
+  lv_obj_remove_style_all(cradle);
+  lv_obj_set_size(cradle, 18, 13);
+  lv_obj_set_style_border_width(cradle, 2, 0);
+  lv_obj_set_style_border_color(cradle, kFg, 0);
+  lv_obj_set_style_border_side(cradle, static_cast<lv_border_side_t>(LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_LEFT | LV_BORDER_SIDE_RIGHT), 0);
+  lv_obj_set_style_radius(cradle, 7, 0);
+  lv_obj_remove_flag(cradle, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_align(cradle, LV_ALIGN_TOP_MID, 0, 2);
+  lv_obj_t* stem = box(mic_btn_, 0, 0, 2, 5, kFg);
+  lv_obj_align(stem, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_add_flag(mic_btn_, LV_OBJ_FLAG_HIDDEN);
 
   fx_alert_ = text(face_, &buddy_font_13, kWarn);
   lv_label_set_text(fx_alert_, "!");
@@ -1221,6 +1416,25 @@ void set_battery(int percent, bool charging) {
 
 const app::Settings& settings() { return state_.settings; }
 
+void set_mic_handlers(const MicHandlers& handlers) { mic_ = handlers; }
+
+void show_transcript(bool ok, const std::string& text) {
+  if (view_ != kPick) return;
+  if (!ok || text.empty()) {
+    lv_label_set_text(pick_text_, ok ? "não ouvi nada" : ("não consegui transcrever. " + text).c_str());
+    pick_back_at_ = millis() + 2500;
+    return;
+  }
+  pick_transcript_ = text;
+  fill_pick();
+}
+
+void on_send_result(bool ok, const std::string& detail) {
+  if (view_ != kPick) return;
+  lv_label_set_text_fmt(pick_text_, "%s %s", ok ? "✓" : "✕", detail.c_str());
+  pick_back_at_ = millis() + (ok ? 1500 : 3000);
+}
+
 void set_stats(const Stats& st) {
   if (view_ != kSettings || page_ != kSystemPage || !stats_values_) return;
   lv_mem_monitor_t mem;
@@ -1240,6 +1454,11 @@ void set_stats(const Stats& st) {
 
 void loop() {
   animate();
+  tick_rec();
+  if (pick_back_at_ && millis() > pick_back_at_) {
+    pick_back_at_ = 0;
+    if (view_ == kPick) show(kFace);
+  }
   tick_approve_timer();
   const uint32_t idle = lv_display_get_inactive_time(nullptr);
   if ((view_ == kMenu && idle > kMenuIdleMs) ||

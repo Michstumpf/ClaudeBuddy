@@ -64,6 +64,7 @@ Incoming parse(const std::string& json) {
       if (!str(set["volume"]).empty()) st.settings.volume = str(set["volume"]);
       if (!str(set["brightness"]).empty()) st.settings.brightness = str(set["brightness"]);
       if (!str(set["pomodoro"]).empty()) st.settings.pomodoro = str(set["pomodoro"]);
+      st.settings.mic = set["mic"] | false;
     }
     JsonObjectConst w = doc["weather"];
     if (!w.isNull()) {
@@ -102,6 +103,11 @@ Incoming parse(const std::string& json) {
     in.type = type == "decision_result" ? MessageType::DecisionResult : MessageType::DictateResult;
     in.id = str(doc["id"]);
     in.ok = doc["ok"] | false;
+    in.text = str(doc["detail"]);
+  } else if (type == "command_result") {
+    in.type = MessageType::CommandResult;
+    in.ok = doc["handled"] | false;
+    in.text = str(doc["detail"]);
   } else if (type == "pong") {
     in.type = MessageType::Pong;
   }
@@ -149,6 +155,13 @@ std::string pomodoro(bool start) {
   return start ? R"({"type":"pomodoro","action":"start"})" : R"({"type":"pomodoro","action":"stop"})";
 }
 
+std::string command(const std::string& text) {
+  JsonDocument doc;
+  doc["type"] = "command";
+  doc["text"] = text;
+  return dump(doc);
+}
+
 std::string pomodoro_skip() { return R"({"type":"pomodoro","action":"skip"})"; }
 
 std::string settings(const Settings& s) {
@@ -165,6 +178,7 @@ std::string settings(const Settings& s) {
   v["volume"] = s.volume;
   v["brightness"] = s.brightness;
   v["pomodoro"] = s.pomodoro;
+  v["mic"] = s.mic;
   return dump(doc);
 }
 

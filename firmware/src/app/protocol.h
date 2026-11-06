@@ -7,13 +7,13 @@
 
 namespace app {
 
-enum class MessageType { Unknown, State, Speech, Joke, Notice, DecisionResult, DictateResult, Pong };
+enum class MessageType { Unknown, State, Speech, Joke, Notice, DecisionResult, DictateResult, CommandResult, Pong };
 
 struct Incoming {
   MessageType type = MessageType::Unknown;
   State state;                  // for State
   std::string text, url, id;    // for Speech / Joke / results
-  bool ok = false;              // for results
+  bool ok = false;              // for results (command_result: handled)
 };
 
 // Parses one JSON message from the hub. Unknown fields are ignored, missing
@@ -29,6 +29,7 @@ std::string battery(int percent, bool charging);
 std::string pomodoro(bool start);
 std::string pomodoro_skip();  // ends the current phase now
 std::string dictate(const std::string& session_id, const std::string& text);
-std::string night(bool on);  // the device itself asks for night mode (face down)
+std::string night(bool on);
+std::string command(const std::string& text);  // run a transcribed phrase as a voice command  // the device itself asks for night mode (face down)
 
 }  // namespace app

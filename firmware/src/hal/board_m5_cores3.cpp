@@ -44,7 +44,7 @@ void set_volume(uint8_t level) { M5.Speaker.setVolume(level); }
 // On the CoreS3 the mic and the speaker share the I2S bus: one at a time.
 
 static constexpr uint32_t kRate = 16000;
-static constexpr size_t kMaxSamples = kRate * 20;  // 20 s, 640 KB in PSRAM
+static constexpr size_t kMaxSamples = kRate * 60;  // 60 s (the mic screen's limit), 1.9 MB in PSRAM
 static constexpr size_t kChunk = kRate / 10;       // 100 ms per DMA request
 static int16_t* rec_buf = nullptr;
 static size_t rec_len = 0;
@@ -69,6 +69,18 @@ void record_loop() {
     rec_len += kChunk;
   }
 }
+
+int record_level() {
+  // The newest chunk already filled: two more may still be queued for the DMA.
+  if (!recording || rec_len < 3 * kChunk) return 0;
+  const int16_t* chunk = rec_buf + rec_len - 3 * kChunk;
+  double sum = 0;
+  for (size_t i = 0; i < kChunk; i++) sum += static_cast<double>(chunk[i]) * chunk[i];
+  const int rms = static_cast<int>(sqrt(sum / kChunk));
+  return rms > 3000 ? 100 : rms / 30;  // speech at a desk: ~300-3000
+}
+
+float record_seconds() { return recording ? static_cast<float>(rec_len) / kRate : 0; }
 
 size_t record_stop(const int16_t** samples) {
   recording = false;

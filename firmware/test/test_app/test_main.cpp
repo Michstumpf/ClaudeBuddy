@@ -97,13 +97,17 @@ void test_outgoing_messages() {
   TEST_ASSERT_EQUAL_STRING(R"({"type":"battery","percent":42,"charging":true})", battery(42, true).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"pomodoro","action":"start"})", pomodoro(true).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"pomodoro","action":"skip"})", pomodoro_skip().c_str());
+  TEST_ASSERT_EQUAL_STRING(R"({"type":"command","text":"pomodoro"})", command("pomodoro").c_str());
+  Incoming r = parse(R"({"type":"command_result","handled":true,"detail":"pomodoro iniciado"})");
+  TEST_ASSERT_TRUE(r.type == MessageType::CommandResult && r.ok);
+  TEST_ASSERT_EQUAL_STRING("pomodoro iniciado", r.text.c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"dictate","session_id":"a","text":"roda os testes"})",
                            dictate("a", "roda os testes").c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"night","on":true})", night(true).c_str());
   Settings s;
   s.joke_voice = false;
   TEST_ASSERT_EQUAL_STRING(
-      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic","battery":true,"long_task_min":15,"volume":"mid","brightness":"auto","pomodoro":"25+5"}})",
+      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic","battery":true,"long_task_min":15,"volume":"mid","brightness":"auto","pomodoro":"25+5","mic":false}})",
       settings(s).c_str());
 }
 

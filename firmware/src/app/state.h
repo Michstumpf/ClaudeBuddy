@@ -39,6 +39,7 @@ struct Settings {
   std::string volume = "mid";       // off | low | mid | high
   std::string brightness = "auto";  // auto (light sensor) | low | mid | high
   std::string pomodoro = "25+5";    // focus + break minutes: 15+5 | 25+5 | 50+10
+  bool mic = false;                 // the 🎤 button on the face (record → read the text → pick a session)
 };
 
 struct Event {

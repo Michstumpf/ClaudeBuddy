@@ -41,6 +41,8 @@ int battery_percent() { return -1; }
 bool charging() { return false; }
 void set_brightness(uint8_t) {}
 void set_volume(uint8_t) {}
+int record_level() { return 0; }
+float record_seconds() { return 0; }
 
 // No audio or sensors in this simulation.
 bool record_start() { return false; }

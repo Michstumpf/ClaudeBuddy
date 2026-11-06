@@ -32,6 +32,8 @@ void set_volume(uint8_t level);  // speaker, 0 = mute .. 255
 bool record_start();
 void record_loop();
 size_t record_stop(const int16_t** samples);  // returns the sample count; valid until the next record_start
+int record_level();      // loudness of the latest 100 ms, 0..100 (the recording screen's wave)
+float record_seconds();  // recorded so far
 bool play_wav(const uint8_t* wav, size_t len);  // copies the data; plays in the background
 bool playing();
 

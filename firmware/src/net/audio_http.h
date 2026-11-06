@@ -17,7 +17,9 @@ struct Transcription {
   std::string text, detail;
 };
 
-Transcription transcribe(const HubConfig& cfg, const int16_t* pcm, size_t samples, uint32_t rate = 16000);
+// commands = false: only the text (the mic screen shows it and lets the user pick where it goes).
+Transcription transcribe(const HubConfig& cfg, const int16_t* pcm, size_t samples, uint32_t rate = 16000,
+                         bool commands = true);
 bool download(const HubConfig& cfg, const std::string& path, std::vector<uint8_t>& out);
 
 }  // namespace net

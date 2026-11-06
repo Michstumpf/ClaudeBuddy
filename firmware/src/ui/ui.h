@@ -37,6 +37,17 @@ struct Stats {
   uint32_t uptime_s = 0;
 };
 void set_stats(const Stats& stats);
+
+// The 🎤 flow (Ajustes → Som e tela → Microfone). main records and transcribes.
+struct MicHandlers {
+  bool (*start)() = nullptr;          // start recording; false: no mic
+  int (*level)() = nullptr;           // 0..100, for the live wave
+  float (*seconds)() = nullptr;       // recorded so far
+  void (*finish)(bool send) = nullptr;  // stop; if send, transcribe and call show_transcript
+};
+void set_mic_handlers(const MicHandlers& handlers);
+void show_transcript(bool ok, const std::string& text);  // text, or why it failed
+void on_send_result(bool ok, const std::string& detail);  // dictate_result / command_result
 void loop();  // animations and timeouts; call often
 
 }  // namespace ui

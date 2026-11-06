@@ -160,6 +160,25 @@ static void stop_dictation(const std::string& session_id) {
   }
 }
 
+// The 🎤 screen: record until Enviar/Cancelar, then only transcribe (the user
+// reads the text and picks a session, the focused window or a voice command).
+static bool mic_start() { return hal::board::record_start(); }
+static int mic_level() { return hal::board::record_level(); }
+static float mic_seconds() { return hal::board::record_seconds(); }
+static void mic_finish(bool send) {
+  const int16_t* pcm = nullptr;
+  const size_t samples = hal::board::record_stop(&pcm);
+  if (!send) return;
+  if (samples < 16000 * 4 / 10) {  // < 0.4 s: nothing said
+    ui::show_transcript(true, "");
+    return;
+  }
+  net::Transcription t = net::transcribe(cfg_, pcm, samples, 16000, false);
+  Serial.printf("mic: %.1fs recorded, transcription %s (%u chars)\n", samples / 16000.0f, t.ok ? "ok" : "failed",
+                (unsigned)t.text.size());
+  ui::show_transcript(t.ok, t.ok ? t.text : t.detail);
+}
+
 static void on_message(const std::string& json) {
   if (local_command(json)) return;
   app::Incoming in = app::parse(json);
@@ -185,6 +204,10 @@ static void on_message(const std::string& json) {
       Serial.println("rx: speech");
       play(in.url);
       break;
+    case app::MessageType::DictateResult:
+    case app::MessageType::CommandResult:
+      ui::on_send_result(in.ok, in.text);
+      break;
     case app::MessageType::Notice:
       ui::on_notice(in.text);
       Serial.println("rx: notice");
@@ -206,7 +229,15 @@ void setup() {
   ui::begin(send_to_hub);
   net::serial_begin(on_message);
   ui::set_setup_handler(open_setup_portal);
-  if (hal::board::kHasAudio) ui::set_dictation_handlers(start_dictation, stop_dictation);
+  if (hal::board::kHasAudio) {
+    ui::set_dictation_handlers(start_dictation, stop_dictation);
+    ui::MicHandlers mic;
+    mic.start = mic_start;
+    mic.level = mic_level;
+    mic.seconds = mic_seconds;
+    mic.finish = mic_finish;
+    ui::set_mic_handlers(mic);
+  }
 #if !defined(BOARD_WOKWI_S3)  // Wokwi can't host an access point: keep the serial link there
   if (!net::configured()) open_setup_portal();  // first boot: set up from the phone
 #endif

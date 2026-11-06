@@ -12,7 +12,7 @@ namespace net {
 static void put32(uint8_t* p, uint32_t v) { memcpy(p, &v, 4); }
 static void put16(uint8_t* p, uint16_t v) { memcpy(p, &v, 2); }
 
-Transcription transcribe(const HubConfig& cfg, const int16_t* pcm, size_t samples, uint32_t rate) {
+Transcription transcribe(const HubConfig& cfg, const int16_t* pcm, size_t samples, uint32_t rate, bool commands) {
   Transcription t;
   if (WiFi.status() != WL_CONNECTED || cfg.host.empty() || !pcm || !samples) return t;
   const size_t data = samples * 2, total = 44 + data;
@@ -26,7 +26,7 @@ Transcription transcribe(const HubConfig& cfg, const int16_t* pcm, size_t sample
 
   HTTPClient http;
   http.setTimeout(60000);
-  http.begin(cfg.host.c_str(), cfg.port, "/api/transcribe");
+  http.begin(cfg.host.c_str(), cfg.port, commands ? "/api/transcribe" : "/api/transcribe?commands=0");
   http.addHeader("X-Buddy-Token", cfg.token.c_str());
   http.addHeader("Content-Type", "audio/wav");
   const int code = http.POST(wav, total);
