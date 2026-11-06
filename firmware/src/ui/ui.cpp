@@ -11,6 +11,7 @@
 
 LV_FONT_DECLARE(buddy_font_11);
 LV_FONT_DECLARE(buddy_font_13);
+LV_FONT_DECLARE(buddy_font_48);
 
 namespace ui {
 namespace {
@@ -25,7 +26,7 @@ Sender send_ = nullptr;
 app::State state_;
 bool connected_ = false;
 
-enum View : uint8_t { kFace, kList, kSession, kApprove, kSettings, kViews };
+enum View : uint8_t { kFace, kList, kSession, kApprove, kSettings, kMenu, kPomo, kViews };
 lv_obj_t* views_[kViews];
 View view_ = kFace;
 // Taps right after the screen changed are ignored: a finger already down when
@@ -38,13 +39,15 @@ std::string approval_id_;               // pending approval on screen
 uint32_t approval_seen_ = 0;            // millis() when it arrived
 float approval_secs_ = 20;              // seconds left when it arrived
 constexpr uint32_t kIdleBackMs = 30000;
+constexpr uint32_t kMenuIdleMs = 10000;  // the menu is a quick stop
 
 const lv_color_t kBox = lv_color_hex(0x181a1f), kBtn = lv_color_hex(0x3a3f48), kBtnOk = lv_color_hex(0x2f8a5b),
                  kBtnBad = lv_color_hex(0xb8423b), kBtnInfo = lv_color_hex(0x3c6fc4), kBad = lv_color_hex(0xe0574f),
                  kInfo = lv_color_hex(0x6aa8ff);
 lv_obj_t *list_count_, *list_rows_, *sess_title_, *sess_msg_, *appr_timer_, *appr_title_, *appr_danger_, *appr_body_;
-constexpr int kPrefs = 9;
-lv_obj_t* pref_btn_[kPrefs];  // jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro, wifi
+constexpr int kPrefs = 11;
+// jokes, joke_voice, interval, weather, skin, battery, long task, pomodoro length, wifi, volume, brightness
+lv_obj_t* pref_btn_[kPrefs];
 void (*setup_handler_)() = nullptr;
 void (*dictate_start_)() = nullptr;
 void (*dictate_stop_)(const std::string&) = nullptr;
@@ -64,6 +67,11 @@ std::vector<lv_obj_t*> body_, legs_a_, legs_b_, eyes_, big_eyes_;
 constexpr int kBigUnit = 24, kBigX = 16, kBigY = 34;
 lv_obj_t* bigeyes_ = nullptr;
 bool eyes_skin_ = false;
+// Pomodoro look, like the simulator: headphones and music notes while focusing,
+// a coffee with steam on the break, and a thin progress bar under the mascot.
+std::vector<lv_obj_t*> phones_, mug_;
+lv_obj_t *fx_notes_[2], *fx_steam_[2], *pomo_track_, *pomo_mini_;
+std::string face_phase_;  // pomodoro phase the face is drawn for
 
 app::Mood mood_ = app::Mood::Off;
 bool redraw_ = true;
@@ -196,12 +204,30 @@ void show_spinner(bool on) {
 }
 
 void hide_bubble();
+int pomo_left();
+
+void show_if(lv_obj_t* o, bool on) {
+  if (on) lv_obj_remove_flag(o, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+}
+
+void show_pomodoro_look() {
+  const bool fx = !eyes_skin_ && connected_ && !state_.night;
+  const bool focus = fx && face_phase_ == "focus", pause = fx && face_phase_ == "break";
+  for (auto* o : phones_) show_if(o, focus);
+  for (auto* o : fx_notes_) show_if(o, focus);
+  for (auto* o : mug_) show_if(o, pause);
+  for (auto* o : fx_steam_) show_if(o, pause);
+  show_if(pomo_track_, focus || pause);
+  const int len = state_.pomodoro.length;
+  lv_obj_set_width(pomo_mini_, len > 0 ? 160 * (len - pomo_left()) / len : 0);
+  lv_obj_set_style_bg_color(pomo_mini_, lv_color_hex(pause ? 0x6fc59a : 0xe8875f), 0);
+}
 
 void set_mood(const app::MoodView& v) {
   if (v.mood != mood_ || redraw_) {
     redraw_ = false;
     mood_ = v.mood;
-    draw_eyes(eyes_for(mood_));
+    draw_eyes(mood_ == app::Mood::Idle && face_phase_ == "break" ? sprite::kEyesHappy : eyes_for(mood_));
     color_sprite(mood_ == app::Mood::Off ? kOff : kAccent);
     show_spinner(mood_ == app::Mood::Work);
     lv_obj_set_y(sprite_, kSpriteY);
@@ -250,7 +276,12 @@ void refresh() {
   if (battery_ >= 0 && battery_ <= 10 && !charging_ && (v.mood == app::Mood::Idle || v.mood == app::Mood::Sleep))
     v.label = "bateria fraca, me carrega?";
   if (listening_) v = {app::Mood::Talk, "ouvindo… solte para enviar"};
+  if (state_.pomodoro.phase != face_phase_) {
+    face_phase_ = state_.pomodoro.phase;
+    redraw_ = true;  // eyes: happy on the break
+  }
   set_mood(v);
+  show_pomodoro_look();
 
   if (state_.weather.valid && state_.settings.weather)
     lv_label_set_text_fmt(weather_, "%d° %s", state_.weather.temp, state_.weather.place.c_str());
@@ -280,6 +311,12 @@ void animate() {
   int dy = 0;
   if (mood_ == app::Mood::Work) dy = step ? -kUnit / 2 : 0;
   if (mood_ == app::Mood::Wait || mood_ == app::Mood::Talk) dy = step ? -kUnit : 0;
+  if (mood_ == app::Mood::Idle && face_phase_ == "focus") dy = (frame_ / 5) % 2 ? -3 : 0;  // nods to the music
+  for (int i = 0; i < 2; i++) {  // notes and steam drift up, then start over
+    const int rise = (frame_ + i * 10) % 20;
+    lv_obj_set_style_translate_y(fx_notes_[i], -rise, 0);
+    lv_obj_set_style_translate_y(fx_steam_[i], -rise / 2, 0);
+  }
   lv_obj_set_y(sprite_, kSpriteY + dy);
   const int look[] = {0, 0, -1, -1, 0, 0, 1, 1};  // like the simulator's "look" animation
   lv_obj_set_x(bigeyes_, kBigX + (mood_ == app::Mood::Work ? look[(frame_ / 3) % 8] * kBigUnit : 0));
@@ -301,7 +338,7 @@ void on_face_release(lv_event_t*) {
 void on_face_tap(lv_event_t*) {
   if (settling()) return;
   if (send_) send_(app::touch());
-  show(kList);
+  show(kMenu);
 }
 
 // ---- shared widgets ----
@@ -385,17 +422,13 @@ void on_row(lv_event_t* e) {
 }
 
 void build_list(lv_obj_t* v) {
-  button(v, "◀ Buddy", kBtn, go, to(kFace));
-  lv_obj_set_pos(lv_obj_get_child(v, -1), 4, 4);
+  lv_obj_t* back = button(v, "◀ Menu", kBtn, go, to(kMenu));
+  lv_obj_set_size(back, 80, 30);
+  lv_obj_set_pos(back, 4, 3);
   list_count_ = text(v, &buddy_font_11, lv_color_hex(0x7d776f));
-  lv_obj_set_pos(list_count_, 86, 12);
-  lv_obj_set_width(list_count_, 160);
+  lv_obj_set_pos(list_count_, 94, 12);
+  lv_obj_set_width(list_count_, 220);
   lv_label_set_long_mode(list_count_, LV_LABEL_LONG_DOT);
-  // The gear glyph alone made a ~27 px button, too small for a finger on the CoreS3.
-  lv_obj_t* gear = button(v, "⚙", kBtn, go, to(kSettings));
-  lv_obj_set_size(gear, 64, 30);
-  lv_obj_set_style_text_font(lv_obj_get_child(gear, 0), &buddy_font_13, 0);
-  lv_obj_align(gear, LV_ALIGN_TOP_RIGHT, -4, 3);
   list_rows_ = lv_obj_create(v);
   lv_obj_remove_style_all(list_rows_);
   lv_obj_set_pos(list_rows_, 4, 36);
@@ -528,9 +561,19 @@ void tick_approve_timer() {
   lv_obj_set_width(appr_timer_, static_cast<int32_t>(320 * left / 20.0f > 320 ? 320 : 320 * left / 20.0f));
 }
 
-// ---- settings ----
+// ---- settings, in pages by kind (‹ › and "1/5") ----
 
 const int kIntervals[] = {15, 30, 45, 60, 120};
+const char* const kLevels[] = {"off", "low", "mid", "high"};   // volume
+const char* const kBright[] = {"auto", "low", "mid", "high"};  // brightness
+const char* const kPomoLengths[] = {"15+5", "25+5", "50+10"};
+
+template <size_t N>
+std::string next_of(const char* const (&options)[N], const std::string& now) {
+  size_t i = 0;
+  while (i < N && now != options[i]) i++;
+  return options[(i + 1) % N];
+}
 
 void on_pref(lv_event_t* e) {
   if (settling()) return;
@@ -554,79 +597,255 @@ void on_pref(lv_event_t* e) {
       s.long_task_min = options[(i + 1) % 5];
       break;
     }
-    case 7:
-      if (send_) send_(app::pomodoro(state_.pomodoro.phase.empty()));
-      return;
+    case 7: s.pomodoro = next_of(kPomoLengths, s.pomodoro); break;
     case 8:
       if (setup_handler_) setup_handler_();
       return;
+    case 9: s.volume = next_of(kLevels, s.volume); break;
+    case 10: s.brightness = next_of(kBright, s.brightness); break;
   }
   if (send_) send_(app::settings(s));
 }
 
-void on_joke_now(lv_event_t*) {
+struct Page {
+  const char* title;
+  int prefs[4];  // -1 ends the list
+  const char* note;
+};
+constexpr Page kPages[] = {
+    {"Piadas", {0, 1, 2, -1}, nullptr},
+    {"Som e tela", {9, 10, 4, 5}, nullptr},
+    {"Pomodoro", {7, -1}, "A duração vale a partir do próximo pomodoro."},
+    {"Avisos e clima", {3, 6, -1}, nullptr},
+    {"WiFi e hub", {8, -1}, "Configurar abre a rede Buddy-setup para trocar o WiFi ou o hub."},
+};
+constexpr int kPageCount = sizeof(kPages) / sizeof(*kPages);
+lv_obj_t* pages_[kPageCount];
+lv_obj_t *page_title_, *page_count_;
+int page_ = 0;
+
+void show_page(int i) {
+  page_ = (i + kPageCount) % kPageCount;
+  for (int p = 0; p < kPageCount; p++)
+    if (p == page_) lv_obj_remove_flag(pages_[p], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(pages_[p], LV_OBJ_FLAG_HIDDEN);
+  lv_label_set_text_fmt(page_title_, "⚙ %s", kPages[page_].title);
+  lv_label_set_text_fmt(page_count_, "%d/%d", page_ + 1, kPageCount);
+}
+
+void on_page(lv_event_t* e) {
+  if (settling()) return;
+  show_page(page_ + (lv_event_get_user_data(e) ? 1 : -1));
+}
+
+void build_settings(lv_obj_t* v) {
+  page_title_ = text(v, &buddy_font_13, kFg);
+  lv_obj_set_pos(page_title_, 8, 8);
+  const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
+                               "Temperatura lá fora", "Visual", "Indicador de bateria",
+                               "Aviso de tarefa longa", "Foco + pausa", "WiFi e hub", "Volume", "Brilho"};
+  for (int p = 0; p < kPageCount; p++) {
+    pages_[p] = lv_obj_create(v);
+    lv_obj_remove_style_all(pages_[p]);
+    lv_obj_set_pos(pages_[p], 8, 30);
+    lv_obj_set_size(pages_[p], 304, 144);
+    lv_obj_set_flex_flow(pages_[p], LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(pages_[p], 4, 0);
+    lv_obj_remove_flag(pages_[p], LV_OBJ_FLAG_SCROLLABLE);
+    for (int i : kPages[p].prefs) {
+      if (i < 0) break;
+      lv_obj_t* row = text_box(pages_[p], 0, 0, 304, 32);
+      lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+      lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+      lv_obj_set_style_pad_ver(row, 2, 0);
+      lv_obj_t* l = text(row, &buddy_font_11, kFg);
+      lv_label_set_text(l, names[i]);
+      if (i == 3) weather_label_ = l;
+      pref_btn_[i] = button(row, "", kBtn, on_pref, reinterpret_cast<void*>(static_cast<uintptr_t>(i)));
+      lv_obj_set_size(pref_btn_[i], 104, 26);
+      lv_obj_set_style_pad_ver(pref_btn_[i], 0, 0);
+    }
+    if (kPages[p].note) {
+      lv_obj_t* note = text(pages_[p], &buddy_font_11, lv_color_hex(0x7d776f));
+      lv_obj_set_width(note, 300);
+      lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+      lv_label_set_text(note, kPages[p].note);
+    }
+  }
+  lv_obj_t* back = button(v, "◀ Menu", kBtn, go, to(kMenu));
+  lv_obj_set_size(back, 80, 34);
+  lv_obj_set_pos(back, 8, 180);
+  lv_obj_t* prev = button(v, "‹", kBtn, on_page, nullptr);
+  lv_obj_set_size(prev, 56, 34);
+  lv_obj_set_pos(prev, 160, 180);
+  lv_obj_set_style_text_font(lv_obj_get_child(prev, 0), &buddy_font_13, 0);
+  page_count_ = text(v, &buddy_font_13, kMuted);
+  lv_obj_set_width(page_count_, 40);
+  lv_obj_set_style_text_align(page_count_, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_pos(page_count_, 216, 189);
+  lv_obj_t* next = button(v, "›", kBtn, on_page, reinterpret_cast<void*>(1));
+  lv_obj_set_size(next, 56, 34);
+  lv_obj_set_pos(next, 256, 180);
+  lv_obj_set_style_text_font(lv_obj_get_child(next, 0), &buddy_font_13, 0);
+  show_page(0);
+}
+
+void fill_settings() {
+  const app::Settings& st = state_.settings;
+  const bool on[kPrefs] = {st.jokes, st.joke_voice, false, st.weather, false, st.show_battery};
+  for (int i : {0, 1, 3, 5}) {
+    set_button_text(pref_btn_[i], on[i] ? "Ligado" : "Desligado");
+    lv_obj_set_style_bg_color(pref_btn_[i], on[i] ? kBtnOk : kBtn, 0);
+  }
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%d min", st.joke_interval_min);
+  set_button_text(pref_btn_[2], buf);
+  set_button_text(pref_btn_[4], st.eyes_skin ? "Só os olhos" : "Clássico");
+  if (st.long_task_min) {
+    snprintf(buf, sizeof(buf), "%d min", st.long_task_min);
+    set_button_text(pref_btn_[6], buf);
+  } else {
+    set_button_text(pref_btn_[6], "Desligado");
+  }
+  std::string pomo = st.pomodoro;
+  const size_t plus = pomo.find('+');
+  if (plus != std::string::npos) pomo = pomo.substr(0, plus) + " + " + pomo.substr(plus + 1) + " min";
+  set_button_text(pref_btn_[7], pomo.c_str());
+  set_button_text(pref_btn_[8], "Configurar");
+  set_button_text(pref_btn_[9], st.volume == "off" ? "Mudo" : st.volume == "low" ? "Baixo" : st.volume == "high" ? "Alto" : "Médio");
+  set_button_text(pref_btn_[10], st.brightness == "low" ? "Baixo" : st.brightness == "mid" ? "Médio"
+                                 : st.brightness == "high" ? "Alto" : "Automático");
+  // The city is changed from the web panel (no keyboard on a 2" screen).
+  lv_label_set_text_fmt(weather_label_, "Temperatura em %s", st.city.c_str());
+}
+
+// ---- menu: a tap on the face opens big buttons ----
+
+lv_obj_t *menu_sessions_, *menu_pomo_, *menu_pomo_sub_;
+
+int pomo_left() {  // seconds left in the current phase
+  const int left = pomo_secs_ - static_cast<int>((millis() - pomo_at_) / 1000);
+  return left < 0 ? 0 : left;
+}
+
+lv_obj_t* tile(lv_obj_t* parent, int x, int y, const char* title, lv_color_t color, lv_event_cb_t cb, void* data,
+               lv_obj_t** sub) {
+  lv_obj_t* b = lv_button_create(parent);
+  lv_obj_set_pos(b, x, y);
+  lv_obj_set_size(b, 148, 84);
+  lv_obj_set_style_bg_color(b, color, 0);
+  lv_obj_set_style_radius(b, 8, 0);
+  lv_obj_set_style_shadow_width(b, 0, 0);
+  lv_obj_set_flex_flow(b, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(b, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_row(b, 4, 0);
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, data);
+  lv_label_set_text(text(b, &buddy_font_13, kFg), title);
+  *sub = text(b, &buddy_font_11, lv_color_hex(0xc9c4bc));
+  lv_label_set_text(*sub, "");
+  return b;
+}
+
+void on_menu_joke(lv_event_t*) {
   if (settling()) return;
   if (send_) send_(app::joke_now());
   show(kFace);
 }
 
-void build_settings(lv_obj_t* v) {
-  lv_obj_t* title = text(v, &buddy_font_13, kFg);
-  lv_label_set_text(title, "⚙ Configurações");
-  lv_obj_set_pos(title, 8, 8);
-  const char* names[kPrefs] = {"Piadas de vez em quando", "Falar as piadas", "Intervalo entre piadas",
-                               "Temperatura lá fora", "Visual", "Indicador de bateria",
-                               "Aviso de tarefa longa", "Pomodoro (25 + 5 min)", "WiFi e hub"};
-  // The options scroll; Voltar / Contar stay put at the bottom.
-  lv_obj_t* list = lv_obj_create(v);
-  lv_obj_remove_style_all(list);
-  lv_obj_set_pos(list, 8, 28);
-  lv_obj_set_size(list, 304, 146);
-  lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
-  lv_obj_set_style_pad_row(list, 3, 0);
-  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_ACTIVE);
-  for (int i = 0; i < kPrefs; i++) {
-    lv_obj_t* row = text_box(list, 0, 0, 304, 26);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_ver(row, 2, 0);
-    lv_obj_t* l = text(row, &buddy_font_11, kFg);
-    lv_label_set_text(l, names[i]);
-    if (i == 3) weather_label_ = l;
-    pref_btn_[i] = button(row, "", kBtn, on_pref, reinterpret_cast<void*>(static_cast<uintptr_t>(i)));
-    lv_obj_set_size(pref_btn_[i], 96, 22);
-    lv_obj_set_style_pad_ver(pref_btn_[i], 0, 0);
-  }
-  lv_obj_t* back = button(v, "◀ Voltar", kBtn, go, to(kList));
-  lv_obj_set_pos(back, 8, 180);
-  lv_obj_t* now = button(v, "Contar uma piada agora", kBtnInfo, on_joke_now);
-  lv_obj_align(now, LV_ALIGN_TOP_RIGHT, -8, 180);
+void build_menu(lv_obj_t* v) {
+  lv_obj_t* back = button(v, "◀ Buddy", kBtn, go, to(kFace));
+  lv_obj_set_size(back, 88, 30);
+  lv_obj_set_pos(back, 8, 4);
+  lv_obj_t* sub;
+  tile(v, 8, 42, "Sessões", kBtn, go, to(kList), &menu_sessions_);
+  tile(v, 164, 42, "⚙ Ajustes", kBtn, go, to(kSettings), &sub);
+  lv_label_set_text(sub, "piadas, voz, tela");
+  tile(v, 8, 132, "✦ Piada", kBtnInfo, on_menu_joke, nullptr, &sub);
+  lv_label_set_text(sub, "conta uma agora");
+  menu_pomo_ = tile(v, 164, 132, "Pomodoro", kBtn, go, to(kPomo), &menu_pomo_sub_);
 }
 
-void fill_settings() {
-  const bool on[kPrefs] = {state_.settings.jokes, state_.settings.joke_voice, false, state_.settings.weather, false,
-                           state_.settings.show_battery};
-  for (int i : {0, 1, 3, 5}) {
-    set_button_text(pref_btn_[i], on[i] ? "Ligado" : "Desligado");
-    lv_obj_set_style_bg_color(pref_btn_[i], on[i] ? kBtnOk : kBtn, 0);
+void fill_menu() {
+  int open = 0, working = 0, waiting = 0;
+  for (const auto& s : state_.sessions) {
+    if (s.status == app::Status::Offline) continue;
+    open++;
+    working += s.status == app::Status::Working;
+    waiting += s.status == app::Status::Waiting;
   }
-  char buf[16];
-  snprintf(buf, sizeof(buf), "%d min", state_.settings.joke_interval_min);
-  set_button_text(pref_btn_[2], buf);
-  set_button_text(pref_btn_[4], state_.settings.eyes_skin ? "Só os olhos" : "Clássico");
-  if (state_.settings.long_task_min) {
-    snprintf(buf, sizeof(buf), "%d min", state_.settings.long_task_min);
-    set_button_text(pref_btn_[6], buf);
+  if (!open) lv_label_set_text(menu_sessions_, "nenhuma aberta");
+  else if (waiting) lv_label_set_text_fmt(menu_sessions_, "%d abertas · %d esperando", open, waiting);
+  else lv_label_set_text_fmt(menu_sessions_, "%d abertas · %d trabalhando", open, working);
+  const bool running = !state_.pomodoro.phase.empty();
+  lv_obj_set_style_bg_color(menu_pomo_, running ? kBtnOk : kBtn, 0);
+  if (running) {
+    const int left = pomo_left();
+    lv_label_set_text_fmt(menu_pomo_sub_, "%s %02d:%02d", state_.pomodoro.phase == "focus" ? "foco" : "pausa",
+                          left / 60, left % 60);
   } else {
-    set_button_text(pref_btn_[6], "Desligado");
+    lv_label_set_text_fmt(menu_pomo_sub_, "%d min de foco", atoi(state_.settings.pomodoro.c_str()));
   }
-  const bool pomo = !state_.pomodoro.phase.empty();
-  set_button_text(pref_btn_[7], pomo ? "Parar" : "Iniciar");
-  lv_obj_set_style_bg_color(pref_btn_[7], pomo ? kBtnOk : kBtn, 0);
-  set_button_text(pref_btn_[8], "Configurar");
-  // The city is changed from the web panel (no keyboard on a 2" screen).
-  lv_label_set_text_fmt(weather_label_, "Temperatura em %s", state_.settings.city.c_str());
+}
+
+// ---- pomodoro: the countdown big enough to read from the chair ----
+
+const lv_color_t kFocus = lv_color_hex(0xe8875f), kBreak = lv_color_hex(0x6fc59a);
+lv_obj_t *pomo_phase_, *pomo_time_, *pomo_fill_, *pomo_rounds_, *pomo_skip_, *pomo_toggle_;
+
+void on_pomo_toggle(lv_event_t*) {
+  if (settling()) return;
+  if (send_) send_(app::pomodoro(state_.pomodoro.phase.empty()));
+}
+
+void on_pomo_skip(lv_event_t*) {
+  if (settling() || state_.pomodoro.phase.empty()) return;
+  if (send_) send_(app::pomodoro_skip());
+}
+
+void build_pomo(lv_obj_t* v) {
+  pomo_phase_ = text(v, &buddy_font_13, kMuted);
+  lv_obj_align(pomo_phase_, LV_ALIGN_TOP_MID, 0, 18);
+  pomo_time_ = text(v, &buddy_font_48, kFg);
+  lv_obj_align(pomo_time_, LV_ALIGN_TOP_MID, 0, 42);
+  lv_obj_t* track = box(v, 16, 108, 288, 8, kBar);
+  lv_obj_set_style_radius(track, 4, 0);
+  pomo_fill_ = box(track, 0, 0, 0, 8, kFocus);
+  lv_obj_set_style_radius(pomo_fill_, 4, 0);
+  pomo_rounds_ = text(v, &buddy_font_11, lv_color_hex(0x7d776f));
+  lv_obj_align(pomo_rounds_, LV_ALIGN_TOP_MID, 0, 126);
+  lv_obj_t* back = button(v, "◀ Menu", kBtn, go, to(kMenu));
+  lv_obj_set_size(back, 96, 38);
+  lv_obj_set_pos(back, 8, 172);
+  pomo_skip_ = button(v, "Pular", kBtn, on_pomo_skip);
+  lv_obj_set_size(pomo_skip_, 96, 38);
+  lv_obj_set_pos(pomo_skip_, 112, 172);
+  pomo_toggle_ = button(v, "▶ Iniciar", kBtnOk, on_pomo_toggle);
+  lv_obj_set_size(pomo_toggle_, 96, 38);
+  lv_obj_set_pos(pomo_toggle_, 216, 172);
+}
+
+void fill_pomo() {
+  const app::Pomodoro& p = state_.pomodoro;
+  const bool running = !p.phase.empty(), focus = p.phase == "focus";
+  const int left = running ? pomo_left() : atoi(state_.settings.pomodoro.c_str()) * 60;
+  lv_label_set_text_fmt(pomo_time_, "%02d:%02d", left / 60, left % 60);
+  lv_label_set_text(pomo_phase_, !running ? "POMODORO" : focus ? "FOCO" : "PAUSA");
+  lv_obj_set_style_text_color(pomo_phase_, !running ? kMuted : focus ? kFocus : kBreak, 0);
+  lv_obj_set_style_bg_color(pomo_fill_, focus ? kFocus : kBreak, 0);
+  lv_obj_set_width(pomo_fill_, running && p.length ? 288 * (p.length - left) / p.length : 0);
+  if (!running) {
+    const std::string& len = state_.settings.pomodoro;
+    const size_t plus = len.find('+');
+    lv_label_set_text_fmt(pomo_rounds_, "%s min de foco + %s de pausa", len.substr(0, plus).c_str(),
+                          plus == std::string::npos ? "5" : len.substr(plus + 1).c_str());
+  } else if (p.rounds) {
+    lv_label_set_text_fmt(pomo_rounds_, "%d %s", p.rounds, p.rounds == 1 ? "ciclo completo" : "ciclos completos");
+  } else {
+    lv_label_set_text(pomo_rounds_, "primeiro ciclo");
+  }
+  set_button_text(pomo_toggle_, running ? "■ Parar" : "▶ Iniciar");
+  lv_obj_set_style_bg_color(pomo_toggle_, running ? kBtnBad : kBtnOk, 0);
+  set_button_text(pomo_skip_, running && !focus ? "Pular pausa" : "Pausar já");
+  if (running) lv_obj_remove_state(pomo_skip_, LV_STATE_DISABLED); else lv_obj_add_state(pomo_skip_, LV_STATE_DISABLED);
 }
 
 // ---- navigation ----
@@ -639,6 +858,8 @@ void show(View v) {
   if (v == kList) fill_list();
   if (v == kSession) fill_session();
   if (v == kSettings) fill_settings();
+  if (v == kMenu) fill_menu();
+  if (v == kPomo) fill_pomo();
   if (v == kApprove && !state_.pending.empty()) fill_approve();
   lv_display_trigger_activity(nullptr);  // restarts the idle-return countdown
 }
@@ -652,6 +873,8 @@ void route() {
   else if (view_ == kList) fill_list();
   else if (view_ == kSession) fill_session();
   else if (view_ == kSettings) fill_settings();
+  else if (view_ == kMenu) fill_menu();
+  else if (view_ == kPomo) fill_pomo();
 }
 
 }  // namespace
@@ -673,6 +896,8 @@ void begin(Sender send) {
   build_session(views_[kSession]);
   build_approve(views_[kApprove]);
   build_settings(views_[kSettings]);
+  build_menu(views_[kMenu]);
+  build_pomo(views_[kPomo]);
   build_sprite();
   bigeyes_ = lv_obj_create(face_);
   lv_obj_remove_style_all(bigeyes_);
@@ -680,6 +905,31 @@ void begin(Sender send) {
   lv_obj_set_size(bigeyes_, 12 * kBigUnit, 5 * kBigUnit);
   lv_obj_remove_flag(bigeyes_, LV_OBJ_FLAG_CLICKABLE);
   lv_obj_add_flag(bigeyes_, LV_OBJ_FLAG_HIDDEN);
+
+  // Pomodoro look (see show_pomodoro_look); sprite units, drawn past the body's box.
+  lv_obj_add_flag(sprite_, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+  const struct { int8_t x, y, w, h; uint32_t color; } phones[] = {
+      {4, -2, 10, 1, 0x8a8f99}, {3, -1, 1, 1, 0x8a8f99}, {14, -1, 1, 1, 0x8a8f99},  // band
+      {1, 0, 2, 4, 0x4a4f59},   {15, 0, 2, 4, 0x4a4f59},                             // cups
+      {2, 1, 1, 2, 0xe8875f},   {15, 1, 1, 2, 0xe8875f}};                            // pads
+  for (auto& r : phones)
+    phones_.push_back(box(sprite_, r.x * kUnit, r.y * kUnit, r.w * kUnit, r.h * kUnit, lv_color_hex(r.color)));
+  mug_.push_back(box(sprite_, 18 * kUnit, 5 * kUnit, 3 * kUnit, 3 * kUnit, lv_color_hex(0xe9e4dc)));
+  mug_.push_back(box(sprite_, 21 * kUnit, 6 * kUnit, kUnit, kUnit, lv_color_hex(0xe9e4dc)));
+  mug_.push_back(box(sprite_, 18 * kUnit, 5 * kUnit, 3 * kUnit, kUnit, lv_color_hex(0x7a4a2e)));
+  fx_steam_[0] = box(sprite_, 186, 30, 4, 10, lv_color_hex(0x8a857f));
+  fx_steam_[1] = box(sprite_, 196, 26, 4, 10, lv_color_hex(0x8a857f));
+  fx_notes_[0] = text(face_, &buddy_font_13, lv_color_hex(0xe8875f));
+  lv_label_set_text(fx_notes_[0], "♪");
+  lv_obj_set_pos(fx_notes_[0], kSpriteX + 168, kSpriteY - 18);
+  fx_notes_[1] = text(face_, &buddy_font_13, lv_color_hex(0xe8875f));
+  lv_label_set_text(fx_notes_[1], "♫");
+  lv_obj_set_pos(fx_notes_[1], kSpriteX - 22, kSpriteY - 12);
+  pomo_track_ = box(face_, kSpriteX + 10, kSpriteY + 108, 160, 5, kBar);
+  pomo_mini_ = box(pomo_track_, 0, 0, 0, 5, lv_color_hex(0xe8875f));
+  for (auto* o : phones_) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  for (auto* o : mug_) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+  for (auto* o : {fx_steam_[0], fx_steam_[1], fx_notes_[0], fx_notes_[1], pomo_track_}) lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
 
   label_ = text(face_, &buddy_font_11, kMuted);
   lv_obj_set_width(label_, 304);
@@ -843,16 +1093,21 @@ void set_battery(int percent, bool charging) {
   refresh();
 }
 
+const app::Settings& settings() { return state_.settings; }
+
 void loop() {
   animate();
   tick_approve_timer();
-  if ((view_ == kList || view_ == kSession || view_ == kSettings) &&
-      lv_display_get_inactive_time(nullptr) > kIdleBackMs)
+  const uint32_t idle = lv_display_get_inactive_time(nullptr);
+  if ((view_ == kMenu && idle > kMenuIdleMs) ||
+      ((view_ == kList || view_ == kSession || view_ == kSettings || view_ == kPomo) && idle > kIdleBackMs))
     show(kFace);
   static uint32_t last = 0;
   if (millis() - last > 1000) {  // expire "done", tick the pomodoro countdown, etc.
     last = millis();
     refresh();
+    if (view_ == kPomo) fill_pomo();
+    if (view_ == kMenu) fill_menu();
     if (state_.pomodoro.phase.empty()) {
       // No pomodoro: "em reunião", or the next meeting within the hour.
       const int left = state_.next_meeting_in - static_cast<int>((millis() - pomo_at_) / 1000);
@@ -863,8 +1118,7 @@ void loop() {
       else
         lv_label_set_text(bar_mid_, "");
     } else {
-      int left = pomo_secs_ - static_cast<int>((millis() - pomo_at_) / 1000);
-      if (left < 0) left = 0;
+      const int left = pomo_left();
       lv_label_set_text_fmt(bar_mid_, "%s %02d:%02d", state_.pomodoro.phase == "focus" ? "foco" : "pausa", left / 60,
                             left % 60);
     }

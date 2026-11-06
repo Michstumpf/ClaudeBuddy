@@ -40,6 +40,7 @@ bool touch(int& x, int& y) {
 int battery_percent() { return -1; }
 bool charging() { return false; }
 void set_brightness(uint8_t) {}
+void set_volume(uint8_t) {}
 
 // No audio or sensors in this simulation.
 bool record_start() { return false; }

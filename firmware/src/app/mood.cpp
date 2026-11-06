@@ -16,6 +16,9 @@ MoodView mood(const State& st, bool connected, bool talking, const std::string& 
   if (waiting || !st.pending.empty()) return {Mood::Wait, "alguém precisa de você!"};
   if (!done_session.empty()) return {Mood::Done, done_session + " terminou!"};
   if (working) return {Mood::Work, ""};
+  // Pomodoro: the face wears headphones (focus) or has a coffee (break), see ui.cpp.
+  if (st.pomodoro.phase == "focus") return {Mood::Idle, "modo foco"};
+  if (st.pomodoro.phase == "break") return {Mood::Idle, "pausa: levanta e alonga"};
   if (any) return {Mood::Idle, "tudo tranquilo"};
   return {Mood::Sleep, "zzz"};
 }

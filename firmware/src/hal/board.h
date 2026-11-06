@@ -25,6 +25,7 @@ int battery_percent();
 bool charging();
 // Backlight 0-255 (no-op without a dimmable backlight).
 void set_brightness(uint8_t level);
+void set_volume(uint8_t level);  // speaker, 0 = mute .. 255
 
 // ---- audio (kHasAudio). Mic and speaker may share one bus: recording stops playback.
 // 16 kHz mono PCM. record_loop() must be called often while recording.

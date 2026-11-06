@@ -91,8 +91,16 @@ static int light_ = -1;
 // Backlight: dim at night and on low battery (CoreS3; no-op in Wokwi).
 static void update_brightness(int battery, bool charging) {
   // Ambient light sets the base (dim room, dim screen); someone close wakes it.
-  uint8_t level = light_ < 0 ? 160 : light_ < 20 ? 60 : light_ < 200 ? 120 : 200;
-  if (near_) level = level < 160 ? 160 : level;
+  // The "brightness" setting: auto follows the ambient light; a fixed level ignores it.
+  const std::string& setting = ui::settings().brightness;
+  uint8_t level;
+  if (setting == "low") level = 60;
+  else if (setting == "mid") level = 130;
+  else if (setting == "high") level = 220;
+  else {
+    level = light_ < 0 ? 160 : light_ < 20 ? 60 : light_ < 200 ? 120 : 200;
+    if (near_) level = level < 160 ? 160 : level;
+  }
   if (battery >= 0 && battery <= 15 && !charging) level = 70;
   if (night_) level = 20;
   hal::board::set_brightness(level);
@@ -100,7 +108,7 @@ static void update_brightness(int battery, bool charging) {
 
 // Spoken replies, jokes and notices come as a URL on the hub: fetch and play.
 static void play(const std::string& url) {
-  if (!hal::board::kHasAudio || url.empty() || night_) return;
+  if (!hal::board::kHasAudio || url.empty() || night_ || ui::settings().volume == "off") return;
   std::vector<uint8_t> wav;
   const uint32_t started = millis();
   const bool got = net::download(cfg_, url, wav);
@@ -149,10 +157,13 @@ static void on_message(const std::string& json) {
   switch (in.type) {
     case app::MessageType::State:
       ui::apply(in.state, true);
-      if (in.state.night != night_) {
-        night_ = in.state.night;
-        update_brightness(hal::board::battery_percent(), hal::board::charging());
+      night_ = in.state.night;
+      // Settings may have changed (here or in the web simulator): volume and brightness.
+      {
+        const std::string& v = in.state.settings.volume;
+        hal::board::set_volume(v == "off" ? 0 : v == "low" ? 90 : v == "high" ? 255 : 170);
       }
+      update_brightness(hal::board::battery_percent(), hal::board::charging());
       Serial.printf("rx: state sessions=%u pending=%u night=%d\n", (unsigned)in.state.sessions.size(),
                     (unsigned)in.state.pending.size(), in.state.night);
       break;

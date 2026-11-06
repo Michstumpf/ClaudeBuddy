@@ -22,8 +22,8 @@ static const char* kState = R"({
   "devices": 2, "night": false,
   "settings": {"jokes": false, "joke_voice": true, "joke_interval_min": 30, "weather": true,
                "city": "porto alegre", "city_geo": {"name": "Porto Alegre", "lat": -30.03, "lon": -51.23},
-               "skin": "eyes", "battery": false},
-  "pomodoro": {"phase": "focus", "ends_in": 1453, "rounds": 0}, "focus": "pomodoro",
+               "skin": "eyes", "battery": false, "volume": "low", "pomodoro": "50+10"},
+  "pomodoro": {"phase": "focus", "ends_in": 1453, "rounds": 2, "length": 1500}, "focus": "pomodoro",
   "github": {"reviews": 4, "failing": 1},
   "calendar": {"now": null, "next": {"title": "Daily", "starts_in": 600}},
   "weather": {"place": "Canoas", "temp": 17, "min": 12, "max": 18, "text": "nublado", "icon": "☁", "updated_at": 1.0},
@@ -54,6 +54,11 @@ void test_parses_full_state() {
   TEST_ASSERT_EQUAL_STRING("approval", st.event.kind.c_str());
   TEST_ASSERT_EQUAL_STRING("focus", st.pomodoro.phase.c_str());
   TEST_ASSERT_EQUAL(1453, st.pomodoro.ends_in);
+  TEST_ASSERT_EQUAL(1500, st.pomodoro.length);
+  TEST_ASSERT_EQUAL(2, st.pomodoro.rounds);
+  TEST_ASSERT_EQUAL_STRING("low", st.settings.volume.c_str());
+  TEST_ASSERT_EQUAL_STRING("auto", st.settings.brightness.c_str());  // missing: default
+  TEST_ASSERT_EQUAL_STRING("50+10", st.settings.pomodoro.c_str());
   TEST_ASSERT_EQUAL_STRING("pomodoro", st.focus.c_str());
   TEST_ASSERT_EQUAL(4, st.github_reviews);
   TEST_ASSERT_EQUAL(1, st.github_failing);
@@ -91,13 +96,14 @@ void test_outgoing_messages() {
                            decision("p1", false).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"battery","percent":42,"charging":true})", battery(42, true).c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"pomodoro","action":"start"})", pomodoro(true).c_str());
+  TEST_ASSERT_EQUAL_STRING(R"({"type":"pomodoro","action":"skip"})", pomodoro_skip().c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"dictate","session_id":"a","text":"roda os testes"})",
                            dictate("a", "roda os testes").c_str());
   TEST_ASSERT_EQUAL_STRING(R"({"type":"night","on":true})", night(true).c_str());
   Settings s;
   s.joke_voice = false;
   TEST_ASSERT_EQUAL_STRING(
-      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic","battery":true,"long_task_min":15}})",
+      R"({"type":"settings","values":{"jokes":true,"joke_voice":false,"weather":true,"joke_interval_min":45,"skin":"classic","battery":true,"long_task_min":15,"volume":"mid","brightness":"auto","pomodoro":"25+5"}})",
       settings(s).c_str());
 }
 
@@ -114,6 +120,9 @@ void test_mood_rules() {
   st.night = false;
   for (auto& s : st.sessions) s.status = Status::Idle;
   TEST_ASSERT_TRUE(mood(st, true, false, "").mood == Mood::Idle);
+  TEST_ASSERT_EQUAL_STRING("modo foco", mood(st, true, false, "").label.c_str());  // the fixture's pomodoro
+  st.pomodoro.phase = "";
+  TEST_ASSERT_EQUAL_STRING("tudo tranquilo", mood(st, true, false, "").label.c_str());
   st.sessions.clear();
   TEST_ASSERT_TRUE(mood(st, true, false, "").mood == Mood::Sleep);
 }

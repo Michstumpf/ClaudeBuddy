@@ -24,6 +24,7 @@ void show_message(const char* line1, const char* line2);
 // release) and holding the face (voice commands) call these.
 void set_dictation_handlers(void (*start)(), void (*stop)(const std::string& session_id));
 void set_listening(bool on);  // the face says "ouvindo… solte para enviar"
+const app::Settings& settings();  // the latest settings from the hub
 void loop();  // animations and timeouts; call often
 
 }  // namespace ui

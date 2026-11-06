@@ -36,6 +36,9 @@ struct Settings {
   bool eyes_skin = false;       // skin "eyes": only the eyes, for a mascot-shaped case
   bool show_battery = true;     // battery indicator in the status bar
   int long_task_min = 15;       // notice after a session works this long (0 = off)
+  std::string volume = "mid";       // off | low | mid | high
+  std::string brightness = "auto";  // auto (light sensor) | low | mid | high
+  std::string pomodoro = "25+5";    // focus + break minutes: 15+5 | 25+5 | 50+10
 };
 
 struct Event {
@@ -45,6 +48,8 @@ struct Event {
 struct Pomodoro {
   std::string phase;  // "focus" | "break" | "" (not running)
   int ends_in = 0;    // seconds left when the hub sent it
+  int length = 0;     // seconds the current phase lasts (progress bars)
+  int rounds = 0;     // focus periods completed
 };
 
 struct State {

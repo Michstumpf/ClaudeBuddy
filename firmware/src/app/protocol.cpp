@@ -61,6 +61,9 @@ Incoming parse(const std::string& json) {
       st.settings.eyes_skin = str(set["skin"]) == "eyes";
       st.settings.show_battery = set["battery"] | true;
       st.settings.long_task_min = set["long_task_min"] | 15;
+      if (!str(set["volume"]).empty()) st.settings.volume = str(set["volume"]);
+      if (!str(set["brightness"]).empty()) st.settings.brightness = str(set["brightness"]);
+      if (!str(set["pomodoro"]).empty()) st.settings.pomodoro = str(set["pomodoro"]);
     }
     JsonObjectConst w = doc["weather"];
     if (!w.isNull()) {
@@ -73,6 +76,8 @@ Incoming parse(const std::string& json) {
     if (!pomo.isNull()) {
       st.pomodoro.phase = str(pomo["phase"]);
       st.pomodoro.ends_in = pomo["ends_in"] | 0;
+      st.pomodoro.length = pomo["length"] | 0;
+      st.pomodoro.rounds = pomo["rounds"] | 0;
     }
     st.focus = str(doc["focus"]);
     st.github_reviews = doc["github"]["reviews"] | 0;
@@ -144,6 +149,8 @@ std::string pomodoro(bool start) {
   return start ? R"({"type":"pomodoro","action":"start"})" : R"({"type":"pomodoro","action":"stop"})";
 }
 
+std::string pomodoro_skip() { return R"({"type":"pomodoro","action":"skip"})"; }
+
 std::string settings(const Settings& s) {
   JsonDocument doc;
   doc["type"] = "settings";
@@ -155,6 +162,9 @@ std::string settings(const Settings& s) {
   v["skin"] = s.eyes_skin ? "eyes" : "classic";
   v["battery"] = s.show_battery;
   v["long_task_min"] = s.long_task_min;
+  v["volume"] = s.volume;
+  v["brightness"] = s.brightness;
+  v["pomodoro"] = s.pomodoro;
   return dump(doc);
 }
 

@@ -15,8 +15,7 @@ void init() {
   // M5.begin leaves the microphone holding the shared I2S bus, so the speaker
   // never played. Speaker by default; recording takes the bus only while used.
   M5.Mic.end();
-  M5.Speaker.begin();
-  M5.Speaker.setVolume(200);
+  M5.Speaker.begin();  // volume: the "volume" setting, applied by main
   M5.Display.setRotation(1);  // landscape 320x240, USB port at the bottom
   M5.Display.setBrightness(160);
   M5.Display.fillScreen(TFT_BLACK);
@@ -39,6 +38,7 @@ bool touch(int& x, int& y) {
 int battery_percent() { return M5.Power.getBatteryLevel(); }
 bool charging() { return M5.Power.isCharging() == m5::Power_Class::is_charging_t::is_charging; }
 void set_brightness(uint8_t level) { M5.Display.setBrightness(level); }
+void set_volume(uint8_t level) { M5.Speaker.setVolume(level); }
 
 // ---- audio ------------------------------------------------------------------
 // On the CoreS3 the mic and the speaker share the I2S bus: one at a time.
