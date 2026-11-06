@@ -45,6 +45,17 @@ def test_long_task_pref():
     assert not p.update({"long_task_min": 7})
 
 
+def test_pomodoro_skip():
+    p = Pomodoro(focus_min=25, break_min=5)
+    assert p.skip(now=0) is None  # not running
+    p.start(now=0)
+    assert p.public(now=0)["length"] == 25 * 60
+    assert "Pausa" in p.skip(now=60)
+    assert p.phase == "break" and p.rounds == 0  # a skipped focus is not a round
+    assert p.public(now=60) == {"phase": "break", "ends_in": 5 * 60, "rounds": 0, "length": 5 * 60}
+    assert "foco" in p.skip(now=120) and p.focusing and p.public(now=120)["ends_in"] == 25 * 60
+
+
 def test_pomodoro_from_the_buddy_sets_focus_and_notices():
     app = create_app(Settings(token=TOKEN, dictation_backend="dry-run"))
     with TestClient(app) as c, c.websocket_connect(f"/ws?token={TOKEN}") as ws:
@@ -56,6 +67,11 @@ def test_pomodoro_from_the_buddy_sets_focus_and_notices():
         notice = next(m for m in msgs if m["type"] == "notice")
         assert state["focus"] == "pomodoro" and state["pomodoro"]["phase"] == "focus"
         assert notice["kind"] == "pomodoro" and "foco" in notice["text"]
+        ws.send_json({"type": "pomodoro", "action": "skip"})
+        # The start notice may still be on its way (it is spoken): wait for the state that moved.
+        state = next(m for m in (ws.receive_json() for _ in range(8))
+                     if m["type"] == "state" and (m["pomodoro"] or {}).get("phase") == "break")
+        assert state["focus"] is None
         ws.send_json({"type": "pomodoro", "action": "stop"})
         state = next(m for m in (ws.receive_json() for _ in range(3)) if m["type"] == "state")
         assert state["focus"] is None and state["pomodoro"] is None

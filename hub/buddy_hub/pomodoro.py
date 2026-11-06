@@ -38,6 +38,20 @@ class Pomodoro:
         self.phase, self.ends_at = "focus", now + self.focus_s
         return "Pausa acabou, de volta ao foco!"
 
+    def skip(self, now: float | None = None) -> str | None:
+        """Ends the current phase now (the Buddy's "pular" button).
+
+        A skipped focus period does not count as a round.
+        """
+        now = time.time() if now is None else now
+        if self.phase is None:
+            return None
+        if self.phase == "focus":
+            self.phase, self.ends_at = "break", now + self.break_s
+            return f"Pausa antecipada: {self.break_s // 60} minutos."
+        self.phase, self.ends_at = "focus", now + self.focus_s
+        return "Pausa pulada, de volta ao foco!"
+
     @property
     def focusing(self) -> bool:
         return self.phase == "focus"
@@ -46,4 +60,5 @@ class Pomodoro:
         if self.phase is None:
             return None
         now = time.time() if now is None else now
-        return {"phase": self.phase, "ends_in": max(0, round(self.ends_at - now)), "rounds": self.rounds}
+        return {"phase": self.phase, "ends_in": max(0, round(self.ends_at - now)), "rounds": self.rounds,
+                "length": self.focus_s if self.phase == "focus" else self.break_s}

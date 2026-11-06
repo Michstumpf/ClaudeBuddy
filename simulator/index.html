@@ -120,6 +120,28 @@
   .opt { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; background: #181a1f; border-radius: 4px; }
   .opt .btn { flex: none; min-width: 92px; padding: 5px 6px; }
   .btn.on { background: #2f8a5b }
+  /* Menu: a tap on the face opens big buttons (a finger is ~40 px on the 2" CoreS3). */
+  #v-menu .pad { padding: 6px 8px 8px; gap: 6px; }
+  .menu-head { display: flex; align-items: center; gap: 6px; }
+  .menu-head .btn { flex: none; padding: 6px 10px; }
+  .menu-head span { color: #7d776f; font: 11px ui-monospace, monospace; }
+  .menu { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; min-height: 0; }
+  .tile { border: 0; border-radius: 8px; background: #3a3f48; color: #fff; cursor: pointer; display: flex;
+          flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 4px; }
+  .tile b { font: bold 15px ui-monospace, monospace; }
+  .tile small { font: 10px ui-monospace, monospace; color: #c9c4bc; text-align: center; }
+  .tile:active { filter: brightness(1.3); }
+  .tile.on { background: #2f8a5b; } .tile.info { background: #3c6fc4; }
+  /* Pomodoro screen: the countdown big enough to read from the chair. */
+  #v-pomo .pad { padding: 6px 8px 8px; gap: 6px; }
+  .pomo-phase { text-align: center; font: bold 13px ui-monospace, monospace; letter-spacing: 2px; color: #c9c4bc; margin-top: auto; }
+  .pomo-phase.focus { color: #e8875f; } .pomo-phase.break { color: #6fc59a; }
+  .pomo-time { text-align: center; font: bold 54px ui-monospace, monospace; color: #fff; line-height: 1; }
+  .pomo-bar { height: 8px; border-radius: 4px; background: #2a2d33; overflow: hidden; margin: 0 6px; }
+  .pomo-bar div { height: 100%; width: 0; background: #e8875f; transition: width .5s linear; }
+  .pomo-bar.break div { background: #6fc59a; }
+  .pomo-rounds { text-align: center; font: 11px ui-monospace, monospace; color: #7d776f; }
+  #v-pomo .btns { margin-top: auto; } #v-pomo .btns .btn { padding: 10px 4px; font-size: 12px; }
   #v-settings .pad { gap: 4px; padding: 6px 8px; }
   #v-settings .optlist { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
   #v-settings .opt { padding: 2px 6px; }
@@ -206,8 +228,34 @@
         </div>
       </div>
 
+      <div class="view" id="v-menu">
+        <div class="pad">
+          <div class="menu-head"><button class="btn" data-go="face">◀ Buddy</button><span id="menuClock"></span></div>
+          <div class="menu">
+            <button class="tile" data-go="list"><b>Sessões</b><small id="menuSessions"></small></button>
+            <button class="tile" data-go="settings"><b>⚙ Ajustes</b><small>piadas, voz, visual</small></button>
+            <button class="tile info" id="menuJoke"><b>✦ Piada</b><small>conta uma agora</small></button>
+            <button class="tile" data-go="pomo" id="menuPomo"><b>Pomodoro</b><small id="menuPomoSub"></small></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="v-pomo">
+        <div class="pad">
+          <div class="pomo-phase" id="pomoPhase">POMODORO</div>
+          <div class="pomo-time" id="pomoTime">25:00</div>
+          <div class="pomo-bar" id="pomoBar"><div id="pomoFill"></div></div>
+          <div class="pomo-rounds" id="pomoRounds">25 min de foco + 5 de pausa</div>
+          <div class="btns">
+            <button class="btn" data-go="menu">◀ Menu</button>
+            <button class="btn" id="pomoSkip">Pular</button>
+            <button class="btn ok" id="pomoToggle">▶ Iniciar</button>
+          </div>
+        </div>
+      </div>
+
       <div class="view" id="v-list">
-        <div class="list-head"><button class="btn" data-go="face">◀ Buddy</button><span id="listCount" style="flex:1"></span><button class="btn" data-go="settings">⚙</button></div>
+        <div class="list-head"><button class="btn" data-go="menu">◀ Menu</button><span id="listCount" style="flex:1"></span><button class="btn" data-go="settings">⚙</button></div>
         <div class="list" id="list"></div>
       </div>
 
@@ -225,7 +273,7 @@
           <div class="opt"><span>Pomodoro (25 + 5 min)</span><button class="btn" id="pomoBtn"></button></div>
           </div>
           <div class="btns">
-            <button class="btn" data-go="list">◀ Voltar</button>
+            <button class="btn" data-go="menu">◀ Voltar</button>
             <button class="btn info" id="jokeNow">😄 Contar uma agora</button>
           </div>
         </div>
@@ -386,7 +434,7 @@ function onMessage(msg) {
 }
 
 // ---------- rendering ----------
-function show(v) { view = v; document.querySelectorAll(".view").forEach(el => el.classList.toggle("on", el.id === "v-" + v)); render(); }
+function show(v) { view = v; document.querySelectorAll(".view").forEach(el => el.classList.toggle("on", el.id === "v-" + v)); render(); tickPomo(); }
 
 function mood() {
   if (!connected) return ["s-off", "sem conexão com o hub"];
@@ -435,6 +483,17 @@ function render() {
   tickPomo();
   const wx = state.weather;
   $("wx").textContent = wx ? `${wx.icon} ${wx.temp}° ${wx.place}` : "";
+  if (view === "menu") {
+    const open = state.sessions.filter(x => x.status !== "offline");
+    const busy = open.filter(x => x.status === "working").length;
+    const waiting = open.filter(x => x.status === "waiting").length;
+    $("menuSessions").textContent = !open.length ? "nenhuma aberta"
+      : waiting ? `${open.length} abertas · ${waiting} esperando` : `${open.length} abertas · ${busy} trabalhando`;
+    $("menuPomo").classList.toggle("on", !!state.pomodoro);
+    $("menuPomoSub").textContent = state.pomodoro ? `parar · ${pomoLeftText()}` : "25 min de foco";
+    const now = new Date();
+    $("menuClock").textContent = now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  }
   if (view === "settings" && state.settings) {
     document.querySelectorAll("[data-pref]").forEach(b => {
       const on = !!state.settings[b.dataset.pref];
@@ -488,15 +547,21 @@ function render() {
 setInterval(render, 1000);
 
 // ---------- touch interactions ----------
-$("v-face").onclick = () => show("list");
+$("v-face").onclick = () => show("menu");
+$("menuJoke").onclick = (e) => { e.stopPropagation(); send({ type: "joke_now" }); show("face"); };
+$("pomoToggle").onclick = (e) => { e.stopPropagation(); send({ type: "pomodoro", action: state.pomodoro ? "stop" : "start" }); };
+$("pomoSkip").onclick = (e) => { e.stopPropagation(); if (state.pomodoro) send({ type: "pomodoro", action: "skip" }); };
 
 // Like a real desk gadget: with no touch for a while, go back to the mascot.
 // Approval and dictation screens are left alone (they close themselves).
 const IDLE_BACK_MS = 30000;
+const MENU_IDLE_MS = 10000;
 let lastTouch = Date.now();
 $("screen").addEventListener("pointerdown", () => { lastTouch = Date.now(); send({ type: "touch" }); }, true);
 setInterval(() => {
-  if (["list", "session", "settings"].includes(view) && Date.now() - lastTouch > IDLE_BACK_MS) show("face");
+  // The menu is a quick stop: back to the mascot sooner.
+  const idle = Date.now() - lastTouch;
+  if ((view === "menu" && idle > MENU_IDLE_MS) || (["list", "session", "settings", "pomo"].includes(view) && idle > IDLE_BACK_MS)) show("face");
 }, 1000);
 document.querySelectorAll("[data-go]").forEach(b => b.onclick = (e) => { e.stopPropagation(); show(b.dataset.go); });
 $("sDictate").onclick = () => {
@@ -559,11 +624,27 @@ function meetingText() {
   return "";
 }
 let calAt = Date.now();
-function tickPomo() {
-  if (!pomoPhase) { $("pomo").textContent = meetingText(); return; }
+function pomoLeftText() {
   const left = Math.max(0, Math.round((pomoEnds - Date.now()) / 1000));
   const mmss = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
-  $("pomo").textContent = `${pomoPhase === "focus" ? "foco" : "pausa"} ${mmss}`;
+  return `${pomoPhase === "focus" ? "foco" : "pausa"} ${mmss}`;
+}
+function tickPomo() {
+  $("pomo").textContent = pomoPhase ? pomoLeftText() : meetingText();
+  if (view !== "pomo") return;
+  const p = state.pomodoro;
+  const left = p ? Math.max(0, Math.round((pomoEnds - Date.now()) / 1000)) : 25 * 60;
+  $("pomoTime").textContent = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
+  $("pomoPhase").textContent = !p ? "POMODORO" : p.phase === "focus" ? "FOCO" : "PAUSA";
+  $("pomoPhase").className = "pomo-phase" + (p ? " " + p.phase : "");
+  $("pomoBar").classList.toggle("break", !!p && p.phase === "break");
+  $("pomoFill").style.width = p && p.length ? `${100 * (1 - left / p.length)}%` : "0";
+  $("pomoRounds").textContent = !p ? "25 min de foco + 5 de pausa"
+    : p.rounds ? `${p.rounds} ${p.rounds === 1 ? "ciclo completo" : "ciclos completos"}` : "primeiro ciclo";
+  $("pomoToggle").textContent = p ? "■ Parar" : "▶ Iniciar";
+  $("pomoToggle").className = "btn " + (p ? "bad" : "ok");
+  $("pomoSkip").textContent = p && p.phase === "break" ? "Pular pausa" : "Pausar já";
+  $("pomoSkip").disabled = !p; $("pomoSkip").style.opacity = p ? 1 : 0.4;
 }
 setInterval(tickPomo, 1000);
 const LONG_OPTIONS = [0, 10, 15, 30, 60];

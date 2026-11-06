@@ -190,7 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         hub.extra["pomodoro"] = pomodoro.public()
 
     async def pomodoro_command(action: str) -> None:
-        text = pomodoro.start() if action == "start" else pomodoro.stop()
+        text = pomodoro.start() if action == "start" else pomodoro.skip() if action == "skip" else pomodoro.stop()
         refresh_focus()
         await hub.notify(None)
         if text:
@@ -618,7 +618,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 elif kind == "night":  # the device itself: screen face down on the desk / picked up
                     await set_night(bool(msg.get("on")), "device")
                 elif kind == "pomodoro":
-                    await pomodoro_command("start" if msg.get("action") == "start" else "stop")
+                    action = msg.get("action")
+                    await pomodoro_command(action if action in ("start", "skip") else "stop")
                 elif kind == "joke_now":
                     asyncio.get_running_loop().create_task(tell_joke())
                 if kind == "decision":
