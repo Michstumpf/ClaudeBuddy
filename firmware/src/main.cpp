@@ -20,9 +20,15 @@
 //   {"type":"_battery","percent":..,"charging":..}  fake battery level (Wokwi has none)
 //   {"type":"_config","ssid":..,"password":..,"host":..,"port":..,"token":..}
 //                                  save WiFi + hub to flash and restart
+//   {"type":"_sensors"}            print raw sensor readings every 200 ms (again: stop)
+//   {"type":"_shake"}              act as if the Buddy was shaken (asks the hub for a joke)
+static bool sensor_log_ = false;
+static void send_to_hub(const std::string& json);
+
 static bool local_command(const std::string& json) {
   if (json.find("\"_tap\"") == std::string::npos && json.find("\"_config\"") == std::string::npos &&
-      json.find("\"_battery\"") == std::string::npos && json.find("\"_drag\"") == std::string::npos)
+      json.find("\"_battery\"") == std::string::npos && json.find("\"_drag\"") == std::string::npos &&
+      json.find("\"_sensors\"") == std::string::npos && json.find("\"_shake\"") == std::string::npos)
     return false;
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
@@ -39,6 +45,16 @@ static bool local_command(const std::string& json) {
   if (doc["type"] == "_battery") {
     ui::set_battery(doc["percent"] | -1, doc["charging"] | false);
     Serial.printf("rx: battery %d\n", (int)(doc["percent"] | -1));
+    return true;
+  }
+  if (doc["type"] == "_shake") {
+    Serial.println("rx: shake");
+    send_to_hub(app::joke_now());
+    return true;
+  }
+  if (doc["type"] == "_sensors") {
+    sensor_log_ = !sensor_log_;
+    Serial.printf("rx: sensor log %s\n", sensor_log_ ? "on" : "off");
     return true;
   }
   if (doc["type"] == "_config") {
@@ -86,7 +102,11 @@ static void update_brightness(int battery, bool charging) {
 static void play(const std::string& url) {
   if (!hal::board::kHasAudio || url.empty() || night_) return;
   std::vector<uint8_t> wav;
-  if (net::download(cfg_, url, wav)) hal::board::play_wav(wav.data(), wav.size());
+  const uint32_t started = millis();
+  const bool got = net::download(cfg_, url, wav);
+  const bool playing = got && hal::board::play_wav(wav.data(), wav.size());
+  Serial.printf("audio: download %s (%u bytes, %lu ms), play %s\n", got ? "ok" : "failed", (unsigned)wav.size(),
+                (unsigned long)(millis() - started), playing ? "started" : "not started");
 }
 
 // ---- push-to-talk on the device (CoreS3 mic) ----
@@ -185,6 +205,9 @@ void loop() {
     if (millis() - sensors_at > 200) {
       sensors_at = millis();
       const hal::board::Sensors s = hal::board::read_sensors();
+      if (sensor_log_)
+        Serial.printf("sensors: ax=%.2f ay=%.2f az=%.2f ps=%d light=%d down=%d\n", s.ax, s.ay, s.az, s.proximity,
+                      s.light, s.face_down);
       // Shake: ask for a joke (at most every 30 s).
       if (s.shaken && millis() - joke_at > 30000) {
         joke_at = millis();

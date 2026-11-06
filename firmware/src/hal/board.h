@@ -40,6 +40,9 @@ struct Sensors {
   int light = -1;         // ambient light, 0-1000ish, -1 unknown
   bool face_down = false; // screen facing the desk
   bool shaken = false;    // a shake since the last read
+  // Raw readings, for tuning the thresholds ({"type":"_sensors"} over USB).
+  float ax = 0, ay = 0, az = 0;  // acceleration in g
+  int proximity = -1;            // LTR-553 PS count, 0-2047
 };
 Sensors read_sensors();
 

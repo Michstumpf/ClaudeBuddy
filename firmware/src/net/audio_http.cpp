@@ -1,6 +1,8 @@
 #include "audio_http.h"
 
 #include <Arduino.h>
+
+#include <algorithm>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
@@ -55,8 +57,11 @@ bool download(const HubConfig& cfg, const std::string& path, std::vector<uint8_t
     WiFiClient* stream = http.getStreamPtr();
     int left = http.getSize();  // -1: unknown (chunked)
     uint8_t chunk[1024];
+    // Never ask readBytes for more than is left: it waits for the full count,
+    // so the last partial chunk used to block until the 20 s timeout.
     while (http.connected() && (left > 0 || left == -1)) {
-      const size_t n = stream->readBytes(chunk, sizeof(chunk));
+      const size_t want = left > 0 ? std::min<size_t>(left, sizeof(chunk)) : std::max(1, stream->available());
+      const size_t n = stream->readBytes(chunk, std::min(want, sizeof(chunk)));
       if (!n) break;
       out.insert(out.end(), chunk, chunk + n);
       if (left > 0) left -= n;

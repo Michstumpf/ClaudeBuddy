@@ -326,6 +326,9 @@ lv_obj_t* button(lv_obj_t* parent, const char* label, lv_color_t color, lv_event
   lv_label_set_text(l, label);
   lv_obj_center(l);
   lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, data);
+  // On the real 2" screen a finger is ~40 px wide: take touches a little
+  // around each button too.
+  lv_obj_set_ext_click_area(b, 6);
   return b;
 }
 
@@ -386,10 +389,13 @@ void build_list(lv_obj_t* v) {
   lv_obj_set_pos(lv_obj_get_child(v, -1), 4, 4);
   list_count_ = text(v, &buddy_font_11, lv_color_hex(0x7d776f));
   lv_obj_set_pos(list_count_, 86, 12);
-  lv_obj_set_width(list_count_, 190);
+  lv_obj_set_width(list_count_, 160);
   lv_label_set_long_mode(list_count_, LV_LABEL_LONG_DOT);
-  button(v, "⚙", kBtn, go, to(kSettings));
-  lv_obj_align(lv_obj_get_child(v, -1), LV_ALIGN_TOP_RIGHT, -4, 4);
+  // The gear glyph alone made a ~27 px button, too small for a finger on the CoreS3.
+  lv_obj_t* gear = button(v, "⚙", kBtn, go, to(kSettings));
+  lv_obj_set_size(gear, 64, 30);
+  lv_obj_set_style_text_font(lv_obj_get_child(gear, 0), &buddy_font_13, 0);
+  lv_obj_align(gear, LV_ALIGN_TOP_RIGHT, -4, 3);
   list_rows_ = lv_obj_create(v);
   lv_obj_remove_style_all(list_rows_);
   lv_obj_set_pos(list_rows_, 4, 36);
