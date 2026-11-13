@@ -1,6 +1,8 @@
 // Wokwi simulation: ESP32-S3 + ILI9341 320x240 (SPI) + FT6206 touch (I2C),
 // wired as in diagram.json.
 #if defined(BOARD_WOKWI_S3)
+#include <esp_system.h>
+
 #include <algorithm>
 
 #include "board.h"
@@ -56,6 +58,9 @@ size_t record_stop(const int16_t** samples) {
 bool play_wav(const uint8_t*, size_t) { return false; }
 bool playing() { return false; }
 Sensors read_sensors() { return {}; }
+
+const char* panel_variant() { return ""; }
+int reset_reason() { return (int)esp_reset_reason(); }
 
 }  // namespace hal::board
 #endif

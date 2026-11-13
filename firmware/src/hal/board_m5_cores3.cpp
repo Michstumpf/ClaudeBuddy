@@ -17,6 +17,13 @@ void init() {
   M5.Mic.end();
   M5.Speaker.begin();  // volume: the "volume" setting, applied by main
   M5.Display.setRotation(1);  // landscape 320x240, USB port at the bottom
+  // M5GFX picks the ILI9342C or ILI9342E driver at boot; the E driver is the one
+  // configured unreadable with 32 dummy read bits.
+  const auto pcfg = M5.Display.panel()->config();
+  Serial.printf("board: %d, display %dx%d, rotation %d, reset reason %d, panel %s (readable %d, dummy %d)\n",
+                (int)M5.getBoard(), (int)M5.Display.width(), (int)M5.Display.height(),
+                (int)M5.Display.getRotation(), (int)esp_reset_reason(),
+                pcfg.readable ? "ILI9342C" : "ILI9342E", (int)pcfg.readable, (int)pcfg.dummy_read_pixel);
   M5.Display.setBrightness(160);
   M5.Display.fillScreen(TFT_BLACK);
 }
@@ -38,6 +45,8 @@ bool touch(int& x, int& y) {
 int battery_percent() { return M5.Power.getBatteryLevel(); }
 bool charging() { return M5.Power.isCharging() == m5::Power_Class::is_charging_t::is_charging; }
 void set_brightness(uint8_t level) { M5.Display.setBrightness(level); }
+const char* panel_variant() { return M5.Display.panel()->config().readable ? "C" : "E"; }
+int reset_reason() { return (int)esp_reset_reason(); }
 void set_volume(uint8_t level) { M5.Speaker.setVolume(level); }
 // The power key goes through the PMIC; M5.update() (in touch()) reads it. Holding
 // it ~6 s still powers off in hardware, whatever the firmware does.

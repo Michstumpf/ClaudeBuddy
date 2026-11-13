@@ -23,6 +23,7 @@
 //                                  save WiFi + hub to flash and restart
 //   {"type":"_sensors"}            print raw sensor readings every 200 ms (again: stop)
 //   {"type":"_shake"}              act as if the Buddy was shaken (asks the hub for a joke)
+//   {"type":"_restart"}            restart the chip (like after a firmware update)
 //   {"type":"_stats"}              print Ajustes → Sistema's numbers every second (again: stop)
 static bool stats_log_ = false;
 static bool sensor_log_ = false;
@@ -32,7 +33,8 @@ static bool local_command(const std::string& json) {
   if (json.find("\"_tap\"") == std::string::npos && json.find("\"_config\"") == std::string::npos &&
       json.find("\"_battery\"") == std::string::npos && json.find("\"_drag\"") == std::string::npos &&
       json.find("\"_sensors\"") == std::string::npos && json.find("\"_shake\"") == std::string::npos &&
-      json.find("\"_stats\"") == std::string::npos)
+      json.find("\"_stats\"") == std::string::npos &&
+      json.find("\"_restart\"") == std::string::npos)
     return false;
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
@@ -50,6 +52,11 @@ static bool local_command(const std::string& json) {
     ui::set_battery(doc["percent"] | -1, doc["charging"] | false);
     Serial.printf("rx: battery %d\n", (int)(doc["percent"] | -1));
     return true;
+  }
+  if (doc["type"] == "_restart") {
+    Serial.println("rx: restart");
+    delay(100);
+    ESP.restart();
   }
   if (doc["type"] == "_stats") {
     stats_log_ = !stats_log_;

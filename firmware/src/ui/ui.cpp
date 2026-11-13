@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../app/mood.h"
+#include "../hal/board.h"
 #include "../app/protocol.h"
 #include "sprite.h"
 
@@ -1516,11 +1517,11 @@ void set_stats(const Stats& st) {
   else snprintf(up, sizeof(up), "%lumin %02lus", (unsigned long)m, (unsigned long)(st.uptime_s % 60));
   const char* signal = st.rssi == 0 ? "desconectado" : st.rssi > -60 ? "ótimo" : st.rssi > -70 ? "bom" : st.rssi > -80 ? "fraco" : "ruim";
   lv_label_set_text_fmt(stats_values_,
-                        "%d%%\n%lu de %lu KB livres\n%lu de %lu KB livres\n%d%% usada\n%lu de %lu KB\n%d dBm (%s)\n%s\n%s",
+                        "%d%%\n%lu de %lu KB livres\n%lu de %lu KB livres\n%d%% usada, painel %s\n%lu de %lu KB\n%d dBm (%s)\n%s\n%s (reset %d)",
                         st.cpu, (unsigned long)(st.heap_free / 1024), (unsigned long)(st.heap_total / 1024),
                         (unsigned long)(st.psram_free / 1024), (unsigned long)(st.psram_total / 1024),
-                        (int)mem.used_pct, (unsigned long)(st.firmware / 1024), (unsigned long)(st.firmware_max / 1024),
-                        st.rssi, signal, st.ip.empty() ? "—" : st.ip.c_str(), up);
+                        (int)mem.used_pct, hal::board::panel_variant(), (unsigned long)(st.firmware / 1024), (unsigned long)(st.firmware_max / 1024),
+                        st.rssi, signal, st.ip.empty() ? "—" : st.ip.c_str(), up, hal::board::reset_reason());
 }
 
 void loop() {

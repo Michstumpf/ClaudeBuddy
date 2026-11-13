@@ -28,6 +28,11 @@ void set_brightness(uint8_t level);
 void set_volume(uint8_t level);  // speaker, 0 = mute .. 255
 bool power_clicked();  // a short press of the power button since the last call
 void power_off();      // cuts the power (with USB plugged in, the charger may wake it again)
+// Display driver picked at boot ("C" / "E" on the CoreS3's ILI9342, "" elsewhere) and the
+// last reset reason (esp_reset_reason_t), shown on the Sistema page: a screen that comes up
+// rotated after some resets is being tracked down with them.
+const char* panel_variant();
+int reset_reason();
 
 // ---- audio (kHasAudio). Mic and speaker may share one bus: recording stops playback.
 // 16 kHz mono PCM. record_loop() must be called often while recording.
